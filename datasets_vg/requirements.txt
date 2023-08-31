@@ -1,0 +1,14 @@
+staticmap
+tqdm
+mega.py
+requests
+opencv_contrib_python
+scikit_image
+scipy
+matplotlib
+numpy
+utm
+Pillow
+protobuf
+torchvision
+gdown
