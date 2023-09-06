@@ -5,14 +5,21 @@ from tqdm import tqdm
 
 
 def benchmark_latency(
-    model, input=None, input_size=(3, 224, 224), batch_size=(12,), repetitions=100
+    model, input=None, input_size=(3, 224, 224), batch_size=64, repetitions=100, precision="fp32"
 ):
     if input is None:
-        input_tensor = torch.randn(batch_size + input_size, dtype=torch.float32).to(
+        input_tensor = torch.randn((batch_size,) + input_size, dtype=torch.float32).to(
             "cuda"
         )
+    
+    if input is None:
+        input_tensor = torch.randn((batch_size,) + input_size, dtype=torch.float32).cuda()
     else:
         input_tensor = input.cuda()
+
+
+    if precision == "fp16":
+        input_tensor = input_tensor.half().cuda()
     model.to("cuda")
     for _ in range(10):
         output = model(input_tensor)
@@ -22,7 +29,7 @@ def benchmark_latency(
     end_event = torch.cuda.Event(enable_timing=True)
 
     latencies = []
-    for _ in range(repetitions):
+    for _ in tqdm(range(repetitions), desc="benchmarking latency"):
         start_event.record()
         output = model(input_tensor)
         end_event.record()
@@ -34,14 +41,16 @@ def benchmark_latency(
     return average_latency, std_latency
 
 
-def benchmark_throughput(model, input_shape=(3, 224, 224)):
+def benchmark_throughput(model, input_shape=(3, 224, 224), precision="fp32"):
     # Make sure model is on GPU
     model = model.cuda()
 
     # Create dummy data
-    batch_size = find_max_batch_size(model, input_shape=input_shape, device="cuda")
+    batch_size = find_max_batch_size(model, input_shape=input_shape, precision=precision, device="cuda")
     torch.cuda.empty_cache()
-    input_tensor = torch.randn(batch_size, 3, 224, 224).cuda()
+    input_tensor = torch.randn(batch_size, 3, 224, 224).float().cuda()
+    if precision == "fp16":
+        input_tensor = input_tensor.half().cuda()
 
     # Warm-up
     for _ in range(10):
@@ -55,7 +64,7 @@ def benchmark_throughput(model, input_shape=(3, 224, 224)):
     start_event.record()
 
     num_batches = 100
-    for _ in range(num_batches):
+    for _ in tqdm(range(num_batches), desc="benchmarking latency"):
         output = model(input_tensor)
 
     end_event.record()
@@ -68,7 +77,7 @@ def benchmark_throughput(model, input_shape=(3, 224, 224)):
     return throughput
 
 
-def find_max_batch_size(model, input_shape, device, delta=5):
+def find_max_batch_size(model, input_shape, device, delta=5, precision='fp32'):
     max_batch_size = 1
     model = model.to(device)
 
@@ -77,10 +86,11 @@ def find_max_batch_size(model, input_shape, device, delta=5):
             # Create a random tensor with the specified batch size and input shape
             dummy_input = torch.randn([max_batch_size] + list(input_shape)).to(device)
 
+            if precision == 'fp16':
+                dummy_input = dummy_input.half().cuda()
+
             # Perform forward pass
             dummy_output = model(dummy_input)
-
-            print(f"Batch size of {max_batch_size} succeeded.")
 
             # Clear cache to make sure memory is actually available
             torch.cuda.empty_cache()
@@ -102,45 +112,136 @@ def find_max_batch_size(model, input_shape, device, delta=5):
 
 import torch
 import torchvision.models as models
-from torch.ao.quantization import get_default_qconfig, fuse_modules, prepare, convert
 
-# Step 1: Load and prepare the model
-model = models.resnet18(pretrained=True).cuda()
-model.eval()
 
-# Step 2: Set the model to evaluation mode
-# Already set using model.eval()
+def quantize_model(model, precision="fp16"):
+    model.eval()
+    if precision=="fp32":
+        data = torch.randn(250, 3, 224, 224)
+        labels = torch.randint(0, 10, size=(250,))
+        testing_dataset = TensorDataset(data, labels)
 
-# Step 3: Fuse Conv and Batch Norm layers for optimization
-# For resnet, layer fusion can be performed as below
-model = torch.ao.quantization.fuse_modules(
-    model,
-    [
-        ["conv1", "bn1"],
-        ["layer1.0.conv1", "layer1.0.bn1"],
-        ["layer1.0.conv2", "layer1.0.bn2"],
-        # Add more layers as needed
-    ],
+        testing_dataloader = torch.utils.data.DataLoader(
+            testing_dataset, batch_size=64, shuffle=False, num_workers=1
+        )
+        calibrator = torch_tensorrt.ptq.DataLoaderCalibrator(
+            testing_dataloader,
+            cache_file="./calibration.cache",
+            use_cache=False,
+            algo_type=torch_tensorrt.ptq.CalibrationAlgo.ENTROPY_CALIBRATION_2,
+            device=torch.device("cuda:0"),
+        )
+
+        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input(min_shape=(1, 3, 224, 224),
+                                                        opt_shape=(64, 3, 224, 224),
+                                                        max_shape=(200, 3, 224, 224),
+                                                        dtype=torch.float)],
+                                            enabled_precisions={torch.float32, torch.half, torch.int8},
+                                            calibrator=calibrator,
+                                            device={
+                                                "device_type": torch_tensorrt.DeviceType.GPU,
+                                                "gpu_id": 0,
+                                                "dla_core": 0,
+                                                "allow_gpu_fallback": False,
+                                                "disable_tf32": False
+                                            })
+        return trt_mod
+    elif precision=="fp16":
+        data = torch.randn(250, 3, 224, 224)
+        labels = torch.randint(0, 10, size=(250,))
+        testing_dataset = TensorDataset(data, labels)
+
+        testing_dataloader = torch.utils.data.DataLoader(
+            testing_dataset, batch_size=64, shuffle=False, num_workers=1
+        )
+        calibrator = torch_tensorrt.ptq.DataLoaderCalibrator(
+            testing_dataloader,
+            cache_file="./calibration.cache",
+            use_cache=False,
+            algo_type=torch_tensorrt.ptq.CalibrationAlgo.ENTROPY_CALIBRATION_2,
+            device=torch.device("cuda:0"),
+        )
+
+        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input(min_shape=(1, 3, 224, 224),
+                                                        opt_shape=(64, 3, 224, 224),
+                                                        max_shape=(200, 3, 224, 224),
+                                                        dtype=torch.float)],
+                                            enabled_precisions={torch.half, torch.int8},
+                                            calibrator=calibrator,
+                                            device={
+                                                "device_type": torch_tensorrt.DeviceType.GPU,
+                                                "gpu_id": 0,
+                                                "dla_core": 0,
+                                                "allow_gpu_fallback": False,
+                                                "disable_tf32": False
+                                            })
+        return trt_mod
+
+    elif precision=="int8":
+        data = torch.randn(250, 3, 224, 224)
+        labels = torch.randint(0, 10, size=(250,))
+        testing_dataset = TensorDataset(data, labels)
+
+        testing_dataloader = torch.utils.data.DataLoader(
+            testing_dataset, batch_size=64, shuffle=False, num_workers=1
+        )
+        calibrator = torch_tensorrt.ptq.DataLoaderCalibrator(
+            testing_dataloader,
+            cache_file="./calibration.cache",
+            use_cache=False,
+            algo_type=torch_tensorrt.ptq.CalibrationAlgo.ENTROPY_CALIBRATION_2,
+            device=torch.device("cuda:0"),
+        )
+
+        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input(min_shape=(1, 3, 224, 224),
+                                                        opt_shape=(64, 3, 224, 224),
+                                                        max_shape=(200, 3, 224, 224),
+                                                        dtype=torch.float)],
+                                            enabled_precisions={torch.int8},
+                                            calibrator=calibrator,
+                                            device={
+                                                "device_type": torch_tensorrt.DeviceType.GPU,
+                                                "gpu_id": 0,
+                                                "dla_core": 0,
+                                                "allow_gpu_fallback": False,
+                                                "disable_tf32": False
+                                            })
+        return trt_mod
+    elif precision=="int4":
+        raise NotImplementedError
+
+
+def prepareQAT(model, precision="fp16", backend="fbgemm", fuse_modules=None):
+    if precision == "fp16":
+        return model.half()
+    elif precision == "fp32":
+        return model
+    elif precision == "int8":
+        for modules in fuse_modules:
+            torch.quantization.fuse_modules(model, fuse_modules, inplace=True)
+        
+        model = nn.Sequential(torch.quantization.QuantStub(),
+                              *model,
+                              torch.quantization.DeQuantStub())
+
+        raise NotImplementedError
+
+
+#import torch_tensorrt as torchtrt
+import torch_tensorrt
+from torch.utils.data import Dataset, DataLoader, TensorDataset
+from torch import nn
+
+
+model = nn.Sequential(
+     nn.Conv2d(3,64,8),
+     nn.ReLU(),
+     nn.Conv2d(64, 128, 8),
+     nn.ReLU()
 )
 
-# Step 4: Specify Quantization Config
-# In this case, we use the default quantization settings
-model.qconfig = get_default_qconfig("fbgemm")  # For x86 CPUs
-# model.qconfig = get_default_qconfig("qnnpack")  # For ARM CPUs
+model = models.resnet50().eval()
 
-# Step 5: Calibrate the Model
-# 'prepare' makes the model ready for static quantization by inserting observers
-model_prepared = prepare(model)
+model = quantize_model(model, precision="int8")
 
-# Calibrate the prepared model to determine quantization parameters
-# Use a subset of your data as the calibration dataset
-sample_data = torch.randn(32, 3, 224, 224)
-model_prepared(sample_data.cuda())
-
-# Step 6: Convert to Quantized Model
-# The actual quantization happens in this step
-model_quantized = convert(model_prepared)
-# Test the quantized model similarly as you would with `model`
-# Now, you can use model_quantized for inference.
-out = model(sample_data.cuda())
-print(out.shape)
+print(benchmark_latency(model))

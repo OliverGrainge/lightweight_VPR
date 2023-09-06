@@ -15,6 +15,21 @@ def parse_arguments():
         default=2,
         help="Number of triplets (query, pos, negs) in a batch. Each triplet consists of 12 images",
     )
+
+    parser.add_argument(
+        "--precision",
+        type=str,
+        default="fp32",
+        help="Precision to quantize model to",
+    )
+
+    parser.add_argument(
+        "--QAT",
+        type=bool,
+        default=False,
+        help="Precision to quantize model to",
+    )
+
     parser.add_argument(
         "--infer_batch_size",
         type=int,
