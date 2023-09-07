@@ -34,6 +34,7 @@ import util
 import commons
 import datasets_ws
 from model import network
+from scratch import quantize_model, benchmark_latency
 
 OFF_THE_SHELF_RADENOVIC = {
     'resnet50conv5_sfm'    : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/rSfM120k-tl-resnet50-gem-w-97bf910.pth',
@@ -89,6 +90,13 @@ elif args.resume is not None:
     model = util.resume_model(args, model)
 # Enable DataParallel after loading checkpoint, otherwise doing it before
 # would append "module." in front of the keys of the state dict triggering errors
+
+
+######################################### QUANTIZE #########################################
+
+model = quantize_model(model, precision=args.precision)
+
+
 model = torch.nn.DataParallel(model)
 
 if args.pca_dim is None:
@@ -98,12 +106,20 @@ else:
     args.features_dim = args.pca_dim
     pca = util.compute_pca(args, model, args.pca_dataset_folder, full_features_dim)
 
+
 ######################################### DATASETS #########################################
 test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
 logging.info(f"Test set: {test_ds}")
 
-######################################### TEST on TEST SET #########################################
+
+
+######################################### TEST on TEST SET #################################
 recalls, recalls_str = test.test(args, test_ds, model, args.test_method, pca)
 logging.info(f"Recalls on {test_ds}: {recalls_str}")
 
+
+######################################## Test Latency ######################################
+torch.cuda.empty_cache()
+lat_mean, lat_var = benchmark_latency(model, input_size=(3, 480, 640), batch_size=12)
+logging.info(f"Mean Latency: {lat_mean}, STD Latency: {lat_var}")
 logging.info(f"Finished in {str(datetime.now() - start_time)[:-7]}")

@@ -36,7 +36,7 @@ class SPoC(nn.Module):
 
 
 class GeM(nn.Module):
-    def __init__(self, p=3, eps=1e-6, work_with_tokens=False):
+    def __init__(self, p: float=3.0, eps: float=1e-6, work_with_tokens=False):
         super().__init__()
         self.p = Parameter(torch.ones(1) * p)
         self.eps = eps
@@ -165,7 +165,7 @@ class NetVLAD(nn.Module):
         else:
             N, D, H, W = x.shape[:]
         if self.normalize_input:
-            x = F.normalize(x, p=2, dim=1)  # Across descriptor dim
+            x = F.normalize(x, p=2.0, dim=1)  # Across descriptor dim
         x_flatten = x.view(N, D, -1)
         soft_assign = self.conv(x).view(N, self.clusters_num, -1)
         soft_assign = F.softmax(soft_assign, dim=1)
@@ -180,9 +180,9 @@ class NetVLAD(nn.Module):
             ].expand(x_flatten.size(-1), -1, -1).permute(1, 2, 0).unsqueeze(0)
             residual = residual * soft_assign[:, D : D + 1, :].unsqueeze(2)
             vlad[:, D : D + 1, :] = residual.sum(dim=-1)
-        vlad = F.normalize(vlad, p=2, dim=2)  # intra-normalization
+        vlad = F.normalize(vlad, p=2.0, dim=2)  # intra-normalization
         vlad = vlad.view(N, -1)  # Flatten
-        vlad = F.normalize(vlad, p=2, dim=1)  # L2 normalize
+        vlad = F.normalize(vlad, p=2.0, dim=1)  # L2 normalize
         return vlad
 
     def initialize_netvlad_layer(self, args, cluster_ds, backbone):

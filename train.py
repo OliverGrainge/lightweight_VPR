@@ -9,6 +9,7 @@ import multiprocessing
 from os.path import join
 from datetime import datetime
 import torchvision.transforms as transforms
+from torch.cuda.amp import autocast, GradScaler
 from torch.utils.data.dataloader import DataLoader
 
 import util
@@ -54,6 +55,10 @@ if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize
 
 model = torch.nn.DataParallel(model)
 
+########################## Quantize Aware Training ##################################
+
+""" NEED TO ADD CODE """
+
 #### Setup Optimizer and Loss
 if args.aggregation == "crn":
     crn_params = list(model.module.aggregation.crn.parameters())
@@ -71,6 +76,9 @@ else:
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     elif args.optim == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001)
+
+if args.precision == "fp16":
+    scaler = GradScaler()
 
 if args.criterion == "triplet":
     criterion_triplet = nn.TripletMarginLoss(margin=args.margin, p=2, reduction="sum")
@@ -136,37 +144,72 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
                 images = transforms.RandomHorizontalFlip()(images)
             
             # Compute features of all images (images contains queries, positives and negatives)
-            features = model(images.to(args.device))
-            loss_triplet = 0
+            if args.precision == "fp16":
+                with autocast():
+                    features = model(images.to(args.device))
+                    
+                    loss_triplet = 0
+                    
+                    if args.criterion == "triplet":
+                        triplets_local_indexes = torch.transpose(
+                            triplets_local_indexes.view(args.train_batch_size, args.negs_num_per_query, 3), 1, 0)
+                        for triplets in triplets_local_indexes:
+                            queries_indexes, positives_indexes, negatives_indexes = triplets.T
+                            loss_triplet += criterion_triplet(features[queries_indexes],
+                                                            features[positives_indexes],
+                                                            features[negatives_indexes])
+                    elif args.criterion == 'sare_joint':
+                        # sare_joint needs to receive all the negatives at once
+                        triplet_index_batch = triplets_local_indexes.view(args.train_batch_size, 10, 3)
+                        for batch_triplet_index in triplet_index_batch:
+                            q = features[batch_triplet_index[0, 0]].unsqueeze(0)  # obtain query as tensor of shape 1xn_features
+                            p = features[batch_triplet_index[0, 1]].unsqueeze(0)  # obtain positive as tensor of shape 1xn_features
+                            n = features[batch_triplet_index[:, 2]]               # obtain negatives as tensor of shape 10xn_features
+                            loss_triplet += criterion_triplet(q, p, n)
+                    elif args.criterion == "sare_ind":
+                        for triplet in triplets_local_indexes:
+                            # triplet is a 1-D tensor with the 3 scalars indexes of the triplet
+                            q_i, p_i, n_i = triplet
+                            loss_triplet += criterion_triplet(features[q_i:q_i+1], features[p_i:p_i+1], features[n_i:n_i+1])
             
-            if args.criterion == "triplet":
-                triplets_local_indexes = torch.transpose(
-                    triplets_local_indexes.view(args.train_batch_size, args.negs_num_per_query, 3), 1, 0)
-                for triplets in triplets_local_indexes:
-                    queries_indexes, positives_indexes, negatives_indexes = triplets.T
-                    loss_triplet += criterion_triplet(features[queries_indexes],
-                                                      features[positives_indexes],
-                                                      features[negatives_indexes])
-            elif args.criterion == 'sare_joint':
-                # sare_joint needs to receive all the negatives at once
-                triplet_index_batch = triplets_local_indexes.view(args.train_batch_size, 10, 3)
-                for batch_triplet_index in triplet_index_batch:
-                    q = features[batch_triplet_index[0, 0]].unsqueeze(0)  # obtain query as tensor of shape 1xn_features
-                    p = features[batch_triplet_index[0, 1]].unsqueeze(0)  # obtain positive as tensor of shape 1xn_features
-                    n = features[batch_triplet_index[:, 2]]               # obtain negatives as tensor of shape 10xn_features
-                    loss_triplet += criterion_triplet(q, p, n)
-            elif args.criterion == "sare_ind":
-                for triplet in triplets_local_indexes:
-                    # triplet is a 1-D tensor with the 3 scalars indexes of the triplet
-                    q_i, p_i, n_i = triplet
-                    loss_triplet += criterion_triplet(features[q_i:q_i+1], features[p_i:p_i+1], features[n_i:n_i+1])
-            
+            else: 
+                features = model(images.to(args.device))
+                
+                loss_triplet = 0
+                
+                if args.criterion == "triplet":
+                    triplets_local_indexes = torch.transpose(
+                        triplets_local_indexes.view(args.train_batch_size, args.negs_num_per_query, 3), 1, 0)
+                    for triplets in triplets_local_indexes:
+                        queries_indexes, positives_indexes, negatives_indexes = triplets.T
+                        loss_triplet += criterion_triplet(features[queries_indexes],
+                                                        features[positives_indexes],
+                                                        features[negatives_indexes])
+                elif args.criterion == 'sare_joint':
+                    # sare_joint needs to receive all the negatives at once
+                    triplet_index_batch = triplets_local_indexes.view(args.train_batch_size, 10, 3)
+                    for batch_triplet_index in triplet_index_batch:
+                        q = features[batch_triplet_index[0, 0]].unsqueeze(0)  # obtain query as tensor of shape 1xn_features
+                        p = features[batch_triplet_index[0, 1]].unsqueeze(0)  # obtain positive as tensor of shape 1xn_features
+                        n = features[batch_triplet_index[:, 2]]               # obtain negatives as tensor of shape 10xn_features
+                        loss_triplet += criterion_triplet(q, p, n)
+                elif args.criterion == "sare_ind":
+                    for triplet in triplets_local_indexes:
+                        # triplet is a 1-D tensor with the 3 scalars indexes of the triplet
+                        q_i, p_i, n_i = triplet
+                        loss_triplet += criterion_triplet(features[q_i:q_i+1], features[p_i:p_i+1], features[n_i:n_i+1])
             del features
             loss_triplet /= (args.train_batch_size * args.negs_num_per_query)
             
             optimizer.zero_grad()
-            loss_triplet.backward()
-            optimizer.step()
+
+            if args.precision == "fp16":
+                scaler.scale(loss_triplet).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss_triplet.backward()
+                optimizer.step()
             
             # Keep track of all losses by appending them to epoch_losses
             batch_loss = loss_triplet.item()

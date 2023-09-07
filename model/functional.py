@@ -36,7 +36,7 @@ def spoc(x):
     return F.adaptive_avg_pool2d(x, (1, 1))
 
 
-def gem(x, p=3, eps=1e-6, work_with_tokens=False):
+def gem(x, p: float=3., eps: float=1e-6, work_with_tokens: bool=False):
     if work_with_tokens:
         x = x.permute(0, 2, 1)
         # unseqeeze to maintain compatibility with Flatten
