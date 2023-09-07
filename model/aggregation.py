@@ -18,7 +18,7 @@ class MAC(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        return LF.mac(x)
+        return F.adaptive_max_pool2d(x, (1, 1))
 
     def __repr__(self):
         return self.__class__.__name__ + "()"
@@ -29,21 +29,22 @@ class SPoC(nn.Module):
         super().__init__()
 
     def forward(self, x):
-        return LF.spoc(x)
+        return F.adaptive_avg_pool2d(x, (1, 1))
 
     def __repr__(self):
         return self.__class__.__name__ + "()"
 
 
 class GeM(nn.Module):
-    def __init__(self, p: float=3.0, eps: float=1e-6, work_with_tokens=False):
+    def __init__(self, p: float=3.0, eps: float=1e-6):
         super().__init__()
         self.p = Parameter(torch.ones(1) * p)
         self.eps = eps
-        self.work_with_tokens = work_with_tokens
 
     def forward(self, x):
-        return LF.gem(x, p=self.p, eps=self.eps, work_with_tokens=self.work_with_tokens)
+        return F.avg_pool2d(x.clamp(min=self.eps).pow(self.p), (x.size(-2), x.size(-1))).pow(
+        1.0 / self.p
+        )
 
     def __repr__(self):
         return (
@@ -76,7 +77,7 @@ class Flatten(torch.nn.Module):
         super().__init__()
 
     def forward(self, x):
-        assert x.shape[2] == x.shape[3] == 1
+        #assert x.shape[2] == x.shape[3] == 1
         return x[:, :, 0, 0]
 
 

@@ -93,8 +93,9 @@ elif args.resume is not None:
 
 
 ######################################### QUANTIZE #########################################
-
 model = quantize_model(model, precision=args.precision)
+
+
 
 
 model = torch.nn.DataParallel(model)

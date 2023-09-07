@@ -6,6 +6,7 @@ class L2Norm(nn.Module):
     def __init__(self, dim=1):
         super().__init__()
         self.dim = dim
+        
     def forward(self, x):
         return F.normalize(x, p=2.0, dim=self.dim)
 

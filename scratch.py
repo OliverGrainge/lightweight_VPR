@@ -7,6 +7,7 @@ from torch.cuda.amp import autocast
 from torch import nn
 import logging
 import torch_tensorrt
+import torch.nn.functional as F
 
 def benchmark_latency(
     model, input=None, input_size=(3, 224, 224), batch_size=64, repetitions=100, precision="fp32"
@@ -146,9 +147,23 @@ def quantize_model(model, precision="fp16"):
     elif precision=="fp16":
         model = mixedPrecision(model)
         return model
-    elif precision=="int8":
+    elif precision == "fp32_comp":
+        trt_model_fp32 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((128, 3, 224, 224), dtype=torch.float32)],
+            enabled_precisions = torch.float32, # Run with FP32
+            workspace_size = 1 << 22
+        )
+        return trt_model_fp32
+    elif precision == "fp16_comp":
+        trt_model_fp16 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((128, 3, 224, 224), dtype=torch.half)],
+            enabled_precisions = {torch.half}, # Run with FP16
+            workspace_size = 1 << 22
+        )
+
+        return trt_model_fp16
+
+    elif precision=="int8_comp":
         data = torch.randn(250, 3, 224, 224)
-        labels = torch.randint(0, 10, size=(250,))
+        labels = torch.randint(0, 10, size=(250,)).cuda()
         testing_dataset = TensorDataset(data, labels)
 
         testing_dataloader = torch.utils.data.DataLoader(
@@ -167,14 +182,7 @@ def quantize_model(model, precision="fp16"):
                                                         max_shape=(200, 3, 224, 224),
                                                         dtype=torch.float)],
                                             enabled_precisions={torch.int8, torch.half},
-                                            calibrator=calibrator,
-                                            device={
-                                                "device_type": torch_tensorrt.DeviceType.GPU,
-                                                "gpu_id": 0,
-                                                "dla_core": 0,
-                                                "allow_gpu_fallback": False,
-                                                "disable_tf32": False
-                                            })
+                                            calibrator=calibrator)
         return trt_mod
 
     elif precision=="int4":
@@ -196,3 +204,86 @@ def prepareQAT(model, precision="fp16", backend="fbgemm", fuse_modules=None):
 
         raise NotImplementedError
 
+
+
+
+
+def gem(x, p: float=3., eps: float=1e-6):
+    return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(
+        1.0 / p
+    )
+
+
+
+class GeM(nn.Module):
+    def __init__(self, p: float=3.0, eps: float=1e-6):
+        super().__init__()
+        self.p = nn.Parameter(torch.ones(1) * p)
+        self.eps = eps
+
+    def forward(self, x):
+        return F.avg_pool2d(x.clamp(min=self.eps).pow(self.p), (x.size(-2), x.size(-1))).pow(
+        1.0 / self.p
+        )
+
+
+class L2Norm(nn.Module):
+    def __init__(self, dim=1):
+        super().__init__()
+        self.dim = dim
+        
+    def forward(self, x):
+        return F.normalize(x, p=2.0, dim=self.dim)
+
+
+from model.aggregation import MAC, SPoC, NetVLAD
+from model.network import get_aggregation, get_backbone
+
+class BaseModel(nn.Module):
+    def __init__(self, args, backbone, aggregation):
+        super().__init__()
+        self.backbone = backbone
+        self.arch_name = args.backbone
+        self.aggregation = aggregation
+
+        if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
+            if args.l2 == "before_pool":
+                self.aggregation = nn.Sequential(L2Norm(), self.aggregation, nn.Flatten())
+            elif args.l2 == "after_pool":
+                self.aggregation = nn.Sequential(self.aggregation, L2Norm(), nn.Flatten())
+            elif args.l2 == "none":
+                self.aggregation = nn.Sequential(self.aggregation, nn.Flatten())
+
+        if args.fc_output_dim != None:
+           # # Concatenate fully connected layer to the aggregation layer
+            self.aggregation = nn.Sequential(
+                self.aggregation,
+                nn.Linear(args.features_dim, args.fc_output_dim),
+                L2Norm(),
+            )
+            args.features_dim = args.fc_output_dim
+
+    def forward(self, x):
+        x = self.backbone(x)
+        x = self.aggregation(x)
+        return x
+
+def GeoLocalizationNet(args):
+    backbone = get_backbone(args).eval()
+    aggregation = get_aggregation(args)
+    model = BaseModel(args, backbone, aggregation)
+    return model
+
+
+import parser
+args = parser.parse_arguments()
+
+net = GeoLocalizationNet(args).eval().cuda()
+
+input = torch.randn(4, 3, 224, 224).cuda()
+
+out = net(input)
+print(out)
+qnet = quantize_model(net, precision='fp16_comp')
+out = qnet(input.half())
+print(out)

@@ -46,7 +46,7 @@ class GeoLocalizationNet(nn.Module):
                 self.aggregation = nn.Sequential(self.aggregation, Flatten())
 
         if args.fc_output_dim != None:
-            # Concatenate fully connected layer to the aggregation layer
+           # # Concatenate fully connected layer to the aggregation layer
             self.aggregation = nn.Sequential(
                 self.aggregation,
                 nn.Linear(args.features_dim, args.fc_output_dim),
@@ -62,7 +62,7 @@ class GeoLocalizationNet(nn.Module):
 
 def get_aggregation(args):
     if args.aggregation == "gem":
-        return aggregation.GeM(work_with_tokens=args.work_with_tokens)
+        return aggregation.GeM()
     elif args.aggregation == "spoc":
         return aggregation.SPoC()
     elif args.aggregation == "mac":

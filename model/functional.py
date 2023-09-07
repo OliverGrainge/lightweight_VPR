@@ -36,19 +36,10 @@ def spoc(x):
     return F.adaptive_avg_pool2d(x, (1, 1))
 
 
-def gem(x, p: float=3., eps: float=1e-6, work_with_tokens: bool=False):
-    if work_with_tokens:
-        x = x.permute(0, 2, 1)
-        # unseqeeze to maintain compatibility with Flatten
-        return (
-            F.avg_pool1d(x.clamp(min=eps).pow(p), (x.size(-1)))
-            .pow(1.0 / p)
-            .unsqueeze(3)
-        )
-    else:
-        return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(
-            1.0 / p
-        )
+def gem(x, p: float=3., eps: float=1e-6):
+    return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(
+        1.0 / p
+    )
 
 
 def rmac(x, L=3, eps=1e-6):
@@ -98,3 +89,6 @@ def rmac(x, L=3, eps=1e-6):
                 vt = vt / (torch.norm(vt, p=2, dim=1, keepdim=True) + eps).expand_as(vt)
                 v += vt
     return v
+
+
+
