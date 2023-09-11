@@ -29,21 +29,20 @@ PRETRAINED_MODELS = {
 
 
 class GeoLocalizationNet(nn.Module):
-    """The used networks are composed of a backbone and an aggregation layer."""
-
     def __init__(self, args):
         super().__init__()
         self.backbone = get_backbone(args)
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
 
+
         if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
             if args.l2 == "before_pool":
-                self.aggregation = nn.Sequential(L2Norm(), self.aggregation, Flatten())
+                self.aggregation = nn.Sequential(L2Norm(), self.aggregation, nn.Flatten())
             elif args.l2 == "after_pool":
-                self.aggregation = nn.Sequential(self.aggregation, L2Norm(), Flatten())
+                self.aggregation = nn.Sequential(self.aggregation, L2Norm(), nn.Flatten())
             elif args.l2 == "none":
-                self.aggregation = nn.Sequential(self.aggregation, Flatten())
+                self.aggregation = nn.Sequential(self.aggregation, nn.Flatten())
 
         if args.fc_output_dim != None:
            # # Concatenate fully connected layer to the aggregation layer
@@ -58,6 +57,7 @@ class GeoLocalizationNet(nn.Module):
         x = self.backbone(x)
         x = self.aggregation(x)
         return x
+
 
 
 def get_aggregation(args):
@@ -226,7 +226,6 @@ def get_backbone(args):
         backbone
     )  # Dinamically obtain number of channels in output
     return backbone
-
 
 class VitWrapper(nn.Module):
     def __init__(self, vit_model, aggregation):

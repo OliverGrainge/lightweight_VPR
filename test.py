@@ -142,6 +142,8 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
             all_features = np.empty((len(eval_ds), args.features_dim), dtype="float32")
 
         for inputs, indices in tqdm(database_dataloader, ncols=100):
+            if args.precision == "mixed" or args.precision == "fp16" or args.precision == "fp16_comp":
+                inputs = inputs.half()
             features = model(inputs.to(args.device)).float()
             if torch.isnan(features).any():
                 raise Exception("Features have NAN in them")
@@ -159,6 +161,9 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
         for inputs, indices in tqdm(queries_dataloader, ncols=100):
             if test_method == "five_crops" or test_method == "nearest_crop" or test_method == 'maj_voting':
                 inputs = torch.cat(tuple(inputs))  # shape = 5*bs x 3 x 480 x 480
+
+            if args.precision == "mixed" or args.precision == "fp16" or args.precision == "fp16_comp":
+                inputs = inputs.half()
 
             features = model(inputs.to(args.device)).float()
             if test_method == "five_crops":  # Compute mean along the 5 crops

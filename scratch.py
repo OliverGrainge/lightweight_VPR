@@ -8,9 +8,10 @@ from torch import nn
 import logging
 import torch_tensorrt
 import torch.nn.functional as F
+import torchvision
 
 def benchmark_latency(
-    model, input=None, input_size=(3, 224, 224), batch_size=64, repetitions=100, precision="fp32"
+    model, input=None, input_size=(3, 480, 640), batch_size=1, repetitions=100, precision="fp32"
 ):
 
     logging.debug("Testing Model Latency")
@@ -25,7 +26,7 @@ def benchmark_latency(
         input_tensor = input.cuda()
 
 
-    if precision == "fp16":
+    if precision == "fp16" or precision == "mixed" or precision == "fp16_comp":
         input_tensor = input_tensor.half().cuda()
     model.to("cuda")
     for _ in range(10):
@@ -122,6 +123,7 @@ def find_max_batch_size(model, input_shape, device, delta=5, precision='fp32'):
 
 import torch
 import torchvision.models as models
+
 def check_nan_inf(model):
     for name, param in model.named_parameters():
         if torch.isnan(param).any():
@@ -204,86 +206,35 @@ def prepareQAT(model, precision="fp16", backend="fbgemm", fuse_modules=None):
 
         raise NotImplementedError
 
+from model.network import GeoLocalizationNet
+
+model = torch.nn.Sequential(
+    nn.Conv2d(3, 10, 3),
+    nn.Conv2d(10, 20, 3),
+    nn.Conv2d(20, 1, 3),
+    nn.Flatten(),
+    nn.Linear(47524, 10)
+).cuda().eval()
 
 
+if __name__ == "__main__":
+    input = torch.randn(8, 3, 224, 224)
+    out = model(input)
+    print(out.shape)
 
+    qnet = quantize_model(model, precision='int8')
 
-def gem(x, p: float=3., eps: float=1e-6):
-    return F.avg_pool2d(x.clamp(min=eps).pow(p), (x.size(-2), x.size(-1))).pow(
-        1.0 / p
-    )
+    """
+    import parser 
+    args = parser.parse_arguments()
 
+    net = GeoLocalizationNet(args).cuda().eval()
+    input = torch.randn(8, 3, 224, 224).cuda()
 
+    #out = net(input)
+    ##print(out)
 
-class GeM(nn.Module):
-    def __init__(self, p: float=3.0, eps: float=1e-6):
-        super().__init__()
-        self.p = nn.Parameter(torch.ones(1) * p)
-        self.eps = eps
-
-    def forward(self, x):
-        return F.avg_pool2d(x.clamp(min=self.eps).pow(self.p), (x.size(-2), x.size(-1))).pow(
-        1.0 / self.p
-        )
-
-
-class L2Norm(nn.Module):
-    def __init__(self, dim=1):
-        super().__init__()
-        self.dim = dim
-        
-    def forward(self, x):
-        return F.normalize(x, p=2.0, dim=self.dim)
-
-
-from model.aggregation import MAC, SPoC, NetVLAD
-from model.network import get_aggregation, get_backbone
-
-class BaseModel(nn.Module):
-    def __init__(self, args, backbone, aggregation):
-        super().__init__()
-        self.backbone = backbone
-        self.arch_name = args.backbone
-        self.aggregation = aggregation
-
-        if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
-            if args.l2 == "before_pool":
-                self.aggregation = nn.Sequential(L2Norm(), self.aggregation, nn.Flatten())
-            elif args.l2 == "after_pool":
-                self.aggregation = nn.Sequential(self.aggregation, L2Norm(), nn.Flatten())
-            elif args.l2 == "none":
-                self.aggregation = nn.Sequential(self.aggregation, nn.Flatten())
-
-        if args.fc_output_dim != None:
-           # # Concatenate fully connected layer to the aggregation layer
-            self.aggregation = nn.Sequential(
-                self.aggregation,
-                nn.Linear(args.features_dim, args.fc_output_dim),
-                L2Norm(),
-            )
-            args.features_dim = args.fc_output_dim
-
-    def forward(self, x):
-        x = self.backbone(x)
-        x = self.aggregation(x)
-        return x
-
-def GeoLocalizationNet(args):
-    backbone = get_backbone(args).eval()
-    aggregation = get_aggregation(args)
-    model = BaseModel(args, backbone, aggregation)
-    return model
-
-
-import parser
-args = parser.parse_arguments()
-
-net = GeoLocalizationNet(args).eval().cuda()
-
-input = torch.randn(4, 3, 224, 224).cuda()
-
-out = net(input)
-print(out)
-qnet = quantize_model(net, precision='fp16_comp')
-out = qnet(input.half())
-print(out)
+    qnet = quantize_model(net, precision=args.precision)
+    out = qnet(input)
+    print(out)
+    """

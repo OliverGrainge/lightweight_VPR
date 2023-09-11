@@ -24,6 +24,9 @@ import torch
 import parser
 import logging
 import sklearn
+from torch import nn
+import torch_tensorrt 
+from torch.cuda.amp import autocast
 from os.path import join
 from datetime import datetime
 from torch.utils.model_zoo import load_url
@@ -34,7 +37,7 @@ import util
 import commons
 import datasets_ws
 from model import network
-from scratch import quantize_model, benchmark_latency
+from scratch import benchmark_latency
 
 OFF_THE_SHELF_RADENOVIC = {
     'resnet50conv5_sfm'    : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/rSfM120k-tl-resnet50-gem-w-97bf910.pth',
@@ -58,8 +61,8 @@ logging.info(f"Arguments: {args}")
 logging.info(f"The outputs are being saved in {args.save_dir}")
 
 ######################################### MODEL #########################################
-model = network.GeoLocalizationNet(args)
-model = model.to(args.device)
+model = network.GeoLocalizationNet(args).cuda().eval()
+#model = model.to(args.device)
 
 if args.aggregation in ["netvlad", "crn"]:
     args.features_dim *= args.netvlad_clusters
@@ -93,12 +96,73 @@ elif args.resume is not None:
 
 
 ######################################### QUANTIZE #########################################
+
+class mixedPrecision(nn.Module):
+    def __init__(self, model):
+        super().__init__()
+        self.model = model
+
+    def forward(self, x):
+        with autocast():
+            output = self.model(x)
+        return output
+
+
+def quantize_model(model, precision="fp16"):
+    if precision == "fp32":
+        return model
+    elif precision=="fp16":
+        model = mixedPrecision(model)
+        return model
+    elif precision == "fp32_comp":
+        trt_model_fp32 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((1, 3, 480, 640), dtype=torch.float32)],
+            enabled_precisions = torch.float32, # Run with FP32
+            workspace_size = 1 << 22
+        )
+        return trt_model_fp32
+    elif precision == "fp16_comp":
+        trt_model_fp16 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((1, 3, 480, 640), dtype=torch.half)],
+            enabled_precisions = {torch.half}, # Run with FP16
+            workspace_size = 1 << 22
+        )
+
+        return trt_model_fp16
+
+    elif precision=="int8_comp":
+        data = torch.randn(250, 3, 224, 224)
+        labels = torch.randint(0, 10, size=(250,)).cuda()
+        testing_dataset = TensorDataset(data, labels)
+
+        testing_dataloader = torch.utils.data.DataLoader(
+            testing_dataset, batch_size=64, shuffle=False, num_workers=1
+        )
+        calibrator = torch_tensorrt.ptq.DataLoaderCalibrator(
+            testing_dataloader,
+            cache_file="./calibration.cache",
+            use_cache=False,
+            algo_type=torch_tensorrt.ptq.CalibrationAlgo.ENTROPY_CALIBRATION_2,
+            device=torch.device("cuda:0"),
+        )
+
+        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input(min_shape=(1, 3, 224, 224),
+                                                        opt_shape=(64, 3, 224, 224),
+                                                        max_shape=(200, 3, 224, 224),
+                                                        dtype=torch.float)],
+                                            enabled_precisions={torch.int8, torch.half},
+                                            calibrator=calibrator)
+        return trt_mod
+
+    elif precision=="int4":
+        raise NotImplementedError
+    
+
 model = quantize_model(model, precision=args.precision)
 
 
 
-
+"""
 model = torch.nn.DataParallel(model)
+"""
 
 if args.pca_dim is None:
     pca = None
@@ -121,6 +185,6 @@ logging.info(f"Recalls on {test_ds}: {recalls_str}")
 
 ######################################## Test Latency ######################################
 torch.cuda.empty_cache()
-lat_mean, lat_var = benchmark_latency(model, input_size=(3, 480, 640), batch_size=12)
+lat_mean, lat_var = benchmark_latency(model, input_size=(3, 480, 640), batch_size=1, precision=args.precision)
 logging.info(f"Mean Latency: {lat_mean}, STD Latency: {lat_var}")
 logging.info(f"Finished in {str(datetime.now() - start_time)[:-7]}")
