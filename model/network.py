@@ -9,6 +9,7 @@ from google_drive_downloader import GoogleDriveDownloader as gdd
 import torch
 import torchvision.models as models
 from torchvision.models import MobileNet_V2_Weights
+import timm
 
 from model.cct import cct_14_7x2_384
 from model.aggregation import Flatten
@@ -115,6 +116,24 @@ def get_pretrained_model(args):
     return model
 
 
+class ShuffleNetV2Features(nn.Module):
+    def __init__(self, original_model):
+        super(ShuffleNetV2Features, self).__init__()
+        self.features = original_model.conv1
+        self.maxpool = original_model.maxpool
+        self.stage2 = original_model.stage2
+        self.stage3 = original_model.stage3
+        self.stage4 = original_model.stage4
+    
+    def forward(self, x):
+        x = self.features(x)
+        x = self.maxpool(x)
+        x = self.stage2(x)
+        x = self.stage3(x)
+        x = self.stage4(x)
+        return x
+
+
 def get_backbone(args):
     # The aggregation layer works differently based on the type of architecture
     args.work_with_tokens = args.backbone.startswith("cct") or args.backbone.startswith(
@@ -129,6 +148,33 @@ def get_backbone(args):
             backbone = mobilenet_v2.features[:-1]
         args.features_dim = get_output_channels_dim(backbone)
         return backbone
+    if args.backbone == "shufflenetv2":
+        shufflenet_v2 = models.shufflenet_v2_x1_0(pretrained=True)  
+        backbone = ShuffleNetV2Features(shufflenet_v2)
+        args.features_dim = get_output_channels_dim(backbone)
+        return backbone
+    if args.backbone.startswith("efficientnet"):
+        if args.backbone.endswith("b0"):
+            model = timm.create_model('efficientnet_b0', pretrained=True)
+            backbone = nn.Sequential(*list(model.children())[:-3])
+        elif args.backbone.endswith("b1"):
+            model = timm.create_model('efficientnet_b1', pretrained=True)
+            backbone = nn.Sequential(*list(model.children())[:-3])
+        elif args.backbone.endswith("b2"):
+            model = timm.create_model('efficientnet_b2', pretrained=True)
+            backbone = nn.Sequential(*list(model.children())[:-3])
+        elif args.backbone.endswith("b3"):
+            model = timm.create_model('efficientnet_b3', pretrained=True)
+            backbone = nn.Sequential(*list(model.children())[:-3])
+        elif args.backbone.endswith("b4"):
+            model = timm.create_model('efficientnet_b4', pretrained=True)
+            backbone = nn.Sequential(*list(model.children())[:-3])
+        elif args.backbone.endswith("b5"):
+            model = timm.create_model('efficientnet_b5', pretrained=True)
+            backbone = nn.Sequential(*list(model.children())[:-3])
+        args.features_dim = get_output_channels_dim(backbone)
+        return backbone
+
     if args.backbone.startswith("resnet"):
         if args.pretrain in ["places", "gldv2"]:
             backbone = get_pretrained_model(args)

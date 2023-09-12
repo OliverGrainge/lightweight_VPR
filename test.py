@@ -1,6 +1,7 @@
 
 import faiss
 import torch
+import time
 import logging
 import numpy as np
 from tqdm import tqdm
@@ -46,9 +47,8 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
                 queries_features[indices.numpy()-eval_ds.database_num, :] = features.cpu().numpy()
 
         queries_features = torch.tensor(queries_features).type(torch.float32).cuda()
-        
         logging.debug("Extracting database features for evaluation/testing")
-        # For database use "hard_resize", although it usually has no effect because database images have same resolution
+        # For database use "hard_resiWARNING: [Torch-TensorRT] - CUDA lazy loading is not enabled. Enabling it can significantly reduce device memory usage and speed up TensorRT initialization. See "Lazy Loading" section of CUDA documentation https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#lazy-loading
         eval_ds.test_method = "hard_resize"
         database_subset_ds = Subset(eval_ds, list(range(eval_ds.database_num)))
         database_dataloader = DataLoader(dataset=database_subset_ds, num_workers=args.num_workers,
@@ -134,7 +134,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
         eval_ds.test_method = "hard_resize"
         database_subset_ds = Subset(eval_ds, list(range(eval_ds.database_num)))
         database_dataloader = DataLoader(dataset=database_subset_ds, num_workers=args.num_workers,
-                                         batch_size=args.infer_batch_size, pin_memory=(args.device == "cuda"))
+                                         batch_size=args.infer_batch_size, pin_memory=(args.device == "cuda"), drop_last=True)
         
         if test_method == "nearest_crop" or test_method == 'maj_voting':
             all_features = np.empty((5 * eval_ds.queries_num + eval_ds.database_num, args.features_dim), dtype="float32")
@@ -157,7 +157,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
         eval_ds.test_method = test_method
         queries_subset_ds = Subset(eval_ds, list(range(eval_ds.database_num, eval_ds.database_num+eval_ds.queries_num)))
         queries_dataloader = DataLoader(dataset=queries_subset_ds, num_workers=args.num_workers,
-                                        batch_size=queries_infer_batch_size, pin_memory=(args.device == "cuda"))
+                                        batch_size=queries_infer_batch_size, pin_memory=(args.device == "cuda"), drop_last=True)
         for inputs, indices in tqdm(queries_dataloader, ncols=100):
             if test_method == "five_crops" or test_method == "nearest_crop" or test_method == 'maj_voting':
                 inputs = torch.cat(tuple(inputs))  # shape = 5*bs x 3 x 480 x 480
@@ -188,6 +188,16 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     del database_features, all_features
     
     logging.debug("Calculating recalls")
+    print("===================", queries_features.shape)
+    dummy_query = np.array([queries_features[0]])
+    retrieval_times = []
+    for _ in tqdm(range(100), desc="Computing Retrieval Time"):
+        st = time.time()
+        _, _ = faiss_index.search(dummy_query, max(args.recall_values))
+        et = time.time()
+        retrieval_times.append(et - st)
+
+    logging.info(f"mean retrieval time: {np.mean(retrieval_times)} --- std retrieval time: {np.std(retrieval_times)}")
     distances, predictions = faiss_index.search(queries_features, max(args.recall_values))
     
     if test_method == 'nearest_crop':

@@ -9,6 +9,12 @@ import logging
 import torch_tensorrt
 import torch.nn.functional as F
 import torchvision
+from torchvision import transforms
+
+
+import os
+os.environ["CUDA_LAZY_DEBUG"] = "1"
+
 
 def benchmark_latency(
     model, input=None, input_size=(3, 480, 640), batch_size=1, repetitions=100, precision="fp32"
@@ -58,7 +64,7 @@ def benchmark_throughput(model, input_shape=(3, 224, 224), precision="fp32"):
     batch_size = find_max_batch_size(model, input_shape=input_shape, precision=precision, device="cuda")
     torch.cuda.empty_cache()
     input_tensor = torch.randn(batch_size, 3, 224, 224).float().cuda()
-    if precision == "fp16":
+    if precision == "fp16" or precision == "mixed" or precision == "fp16_comp":
         input_tensor = input_tensor.half().cuda()
 
     # Warm-up
@@ -118,7 +124,7 @@ def find_max_batch_size(model, input_shape, device, delta=5, precision='fp32'):
             else:
                 raise e
 
-    return max_batch_size - delta
+    return int((max_batch_size - delta) * 0.5)
 
 
 import torch
@@ -146,8 +152,11 @@ class mixedPrecision(nn.Module):
 def quantize_model(model, precision="fp16"):
     if precision == "fp32":
         return model
-    elif precision=="fp16":
+    elif precision=="mixed":
         model = mixedPrecision(model)
+        return model
+    elif precision=="fp16":
+        model = model.half()
         return model
     elif precision == "fp32_comp":
         trt_model_fp32 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((128, 3, 224, 224), dtype=torch.float32)],
@@ -164,12 +173,20 @@ def quantize_model(model, precision="fp16"):
         return trt_model_fp16
 
     elif precision=="int8_comp":
-        data = torch.randn(250, 3, 224, 224)
-        labels = torch.randint(0, 10, size=(250,)).cuda()
-        testing_dataset = TensorDataset(data, labels)
+        testing_dataset = torchvision.datasets.CIFAR10(
+                        root="./data",
+                        train=False,
+                        download=True,
+                        transform=transforms.Compose(
+                            [
+                                transforms.ToTensor(),
+                                transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+                            ]
+                        ),
+                    )
 
         testing_dataloader = torch.utils.data.DataLoader(
-            testing_dataset, batch_size=64, shuffle=False, num_workers=1
+            testing_dataset, batch_size=1, shuffle=False, num_workers=1
         )
         calibrator = torch_tensorrt.ptq.DataLoaderCalibrator(
             testing_dataloader,
@@ -179,62 +196,106 @@ def quantize_model(model, precision="fp16"):
             device=torch.device("cuda:0"),
         )
 
-        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input(min_shape=(1, 3, 224, 224),
-                                                        opt_shape=(64, 3, 224, 224),
-                                                        max_shape=(200, 3, 224, 224),
-                                                        dtype=torch.float)],
-                                            enabled_precisions={torch.int8, torch.half},
-                                            calibrator=calibrator)
+        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input((1, 3, 224, 224))],
+                                            enabled_precisions={torch.float, torch.half, torch.int8},
+                                            calibrator=calibrator,
+                                            device={
+                                                "device_type": torch_tensorrt.DeviceType.GPU,
+                                                "gpu_id": 0,
+                                                "dla_core": 0,
+                                                "allow_gpu_fallback": False,
+                                                "disable_tf32": False
+                                            })
+        
         return trt_mod
 
     elif precision=="int4":
         raise NotImplementedError
 
 
-def prepareQAT(model, precision="fp16", backend="fbgemm", fuse_modules=None):
-    if precision == "fp16":
-        return model.half()
-    elif precision == "fp32":
-        return model
-    elif precision == "int8":
-        for modules in fuse_modules:
-            torch.quantization.fuse_modules(model, fuse_modules, inplace=True)
-        
-        model = nn.Sequential(torch.quantization.QuantStub(),
-                              *model,
-                              torch.quantization.DeQuantStub())
+################################## QAT Training #####################################
 
-        raise NotImplementedError
+class QuantizedModel(nn.Module):
+    def __init__(self, model_fp32):
+        super(QuantizedModel, self).__init__()
+        # QuantStub converts tensors from floating point to quantized.
+        # This will only be used for inputs.
+        self.quant = torch.quantization.QuantStub()
+        # DeQuantStub converts tensors from quantized to floating point.
+        # This will only be used for outputs.
+        self.dequant = torch.quantization.DeQuantStub()
+        # FP32 model
+        self.model_fp32 = model_fp32
+
+    def forward(self, x):
+        # manually specify where tensors will be converted from floating
+        # point to quantized in the quantized model
+        x = self.quant(x)
+        x = self.model_fp32(x)
+        # manually specify where tensors will be converted from quantized
+        # to floating point in the quantized model
+        x = self.dequant(x)
+        return x
+
+def prepareQAT(model, precision="fp16", backend="fbgemm", fuse_modules=None):
+    if precision == "fp16_comp" or precision == "fp16" or precision == "mixed":
+        model.half()
+        model.train()
+        return model
+    elif precision == "fp32":
+        model.train()
+        return model
+    elif precision == "int8_comp":
+        qmodel = QuantizedModel(model)
+        quantization_config = torch.quantization.get_default_qconfig("fbgemm")
+        qmodel.qconfig = quantization_config
+        torch.quantization.prepare_qat(qmodel, inplace=True)
+        qmodel.train()
+        return qmodel
+
+        
+        
 
 from model.network import GeoLocalizationNet
 
-model = torch.nn.Sequential(
-    nn.Conv2d(3, 10, 3),
-    nn.Conv2d(10, 20, 3),
-    nn.Conv2d(20, 1, 3),
-    nn.Flatten(),
-    nn.Linear(47524, 10)
-).cuda().eval()
+
+import math 
+from torch.utils.data import DataLoader, SubsetRandomSampler
+
+
+
+
+class ShuffleNetV2Features(nn.Module):
+    def __init__(self, original_model):
+        super(ShuffleNetV2Features, self).__init__()
+        self.features = original_model.conv1
+        self.maxpool = original_model.maxpool
+        self.stage2 = original_model.stage2
+        self.stage3 = original_model.stage3
+        self.stage4 = original_model.stage4
+    
+    def forward(self, x):
+        x = self.features(x)
+        x = self.maxpool(x)
+        x = self.stage2(x)
+        x = self.stage3(x)
+        x = self.stage4(x)
+        return x
+
 
 
 if __name__ == "__main__":
-    input = torch.randn(8, 3, 224, 224)
-    out = model(input)
+    import torchvision.models as models
+    import timm
+    # ShuffleNet v2 with 1.0 scaling
+    model = timm.create_model('efficientnet_b4', pretrained=True).eval()
+
+    #print(shufflenet_v2)
+    feature_extractor = nn.Sequential(*list(model.children())[:-3])
+    print(feature_extractor)
+
+    input_tensor = torch.randn(16, 3, 260, 260)
+
+
+    out = feature_extractor(input_tensor)
     print(out.shape)
-
-    qnet = quantize_model(model, precision='int8')
-
-    """
-    import parser 
-    args = parser.parse_arguments()
-
-    net = GeoLocalizationNet(args).cuda().eval()
-    input = torch.randn(8, 3, 224, 224).cuda()
-
-    #out = net(input)
-    ##print(out)
-
-    qnet = quantize_model(net, precision=args.precision)
-    out = qnet(input)
-    print(out)
-    """

@@ -95,7 +95,24 @@ elif args.resume is not None:
 # would append "module." in front of the keys of the state dict triggering errors
 
 
+######################################### DATASETS #########################################
+test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
+logging.info(f"Test set: {test_ds}")
+
+######################################## COUNT PARAMETERS #################################
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters())
+
+n_params = count_parameters(model)
+
+logging.info(f"number of model parameters: {n_params}")
 ######################################### QUANTIZE #########################################
+
+from torch.utils.data import DataLoader
+from torch.utils.data.dataset import Subset
+
+calibration_dataset = Subset(test_ds, list(range(test_ds.database_num, test_ds.database_num+test_ds.queries_num)))
 
 class mixedPrecision(nn.Module):
     def __init__(self, model):
@@ -108,20 +125,20 @@ class mixedPrecision(nn.Module):
         return output
 
 
-def quantize_model(model, precision="fp16"):
+def quantize_model(model, precision="fp16", calibration_dataset = None):
     if precision == "fp32":
         return model
-    elif precision=="fp16":
+    elif precision=="mixed":
         model = mixedPrecision(model)
         return model
     elif precision == "fp32_comp":
-        trt_model_fp32 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((1, 3, 480, 640), dtype=torch.float32)],
+        trt_model_fp32 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((args.infer_batch_size, 3, 480, 640), dtype=torch.float32)],
             enabled_precisions = torch.float32, # Run with FP32
             workspace_size = 1 << 22
         )
         return trt_model_fp32
     elif precision == "fp16_comp":
-        trt_model_fp16 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((1, 3, 480, 640), dtype=torch.half)],
+        trt_model_fp16 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((args.infer_batch_size, 3, 480, 640), dtype=torch.half)],
             enabled_precisions = {torch.half}, # Run with FP16
             workspace_size = 1 << 22
         )
@@ -129,13 +146,14 @@ def quantize_model(model, precision="fp16"):
         return trt_model_fp16
 
     elif precision=="int8_comp":
-        data = torch.randn(250, 3, 224, 224)
-        labels = torch.randint(0, 10, size=(250,)).cuda()
-        testing_dataset = TensorDataset(data, labels)
+        if calibration_dataset is None:
+            raise Exception("must provide calibration dataset for int8 quantization")
+
 
         testing_dataloader = torch.utils.data.DataLoader(
-            testing_dataset, batch_size=64, shuffle=False, num_workers=1
+            calibration_dataset, batch_size=args.infer_batch_size, shuffle=False, num_workers=1, drop_last=True
         )
+
         calibrator = torch_tensorrt.ptq.DataLoaderCalibrator(
             testing_dataloader,
             cache_file="./calibration.cache",
@@ -144,20 +162,24 @@ def quantize_model(model, precision="fp16"):
             device=torch.device("cuda:0"),
         )
 
-        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input(min_shape=(1, 3, 224, 224),
-                                                        opt_shape=(64, 3, 224, 224),
-                                                        max_shape=(200, 3, 224, 224),
-                                                        dtype=torch.float)],
-                                            enabled_precisions={torch.int8, torch.half},
-                                            calibrator=calibrator)
+        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input((args.infer_batch_size, 3, 480, 640))],
+                                            enabled_precisions={torch.float, torch.half, torch.int8},
+                                            calibrator=calibrator,
+                                            device={
+                                                "device_type": torch_tensorrt.DeviceType.GPU,
+                                                "gpu_id": 0,
+                                                "dla_core": 0,
+                                                "allow_gpu_fallback": False,
+                                                "disable_tf32": False
+                                            })
+        
         return trt_mod
 
     elif precision=="int4":
         raise NotImplementedError
     
 
-model = quantize_model(model, precision=args.precision)
-
+model = quantize_model(model, precision=args.precision, calibration_dataset=calibration_dataset)
 
 
 """
@@ -172,10 +194,27 @@ else:
     pca = util.compute_pca(args, model, args.pca_dataset_folder, full_features_dim)
 
 
-######################################### DATASETS #########################################
-test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
-logging.info(f"Test set: {test_ds}")
+######################################## Measure Memory footprint ##########################
 
+def measure_memory(model, input_size):
+    if "comp" in args.precision:
+        input = torch.randn(input_size, dtype=torch.float32).cuda()
+        if args.precision == "mixed" or args.precision == "fp16" or args.precision == "fp16_comp":
+            input = input.half()
+        
+        torch.jit.save(model, 'tmp_model.pt')
+        size_in_bytes = os.path.getsize('tmp_model.pt')
+        os.remove('tmp_model.pt')
+        return size_in_bytes
+    else: 
+        torch.save(model.state_dict(), 'tmp_model.pt')
+        size_in_bytes = os.path.getsize('tmp_model.pt')
+        os.remove('tmp_model.pt')
+        return size_in_bytes
+
+#########################################
+model_size = measure_memory(model, input_size=(args.infer_batch_size, 3, 480, 640))
+logging.info(f"Model size is {model_size} bytes")
 
 
 ######################################### TEST on TEST SET #################################
@@ -185,6 +224,12 @@ logging.info(f"Recalls on {test_ds}: {recalls_str}")
 
 ######################################## Test Latency ######################################
 torch.cuda.empty_cache()
-lat_mean, lat_var = benchmark_latency(model, input_size=(3, 480, 640), batch_size=1, precision=args.precision)
-logging.info(f"Mean Latency: {lat_mean}, STD Latency: {lat_var}")
+lat_mean, lat_var = benchmark_latency(model, input_size=(3, 480, 640), batch_size=args.infer_batch_size, precision=args.precision)
+logging.info(f"Mean Inference Latency: {lat_mean}, STD Inference Latency: {lat_var}")
+
+############################ LOGGING INFORMATION ##################################################
+logging.info(f"Model Precision: {args.precision}")
+logging.info(f"Model Backbone: {args.backbone}")
+logging.info(f"Model aggregation: {args.aggregation}")
+logging.info(f"Resumed from: {args.resume}")
 logging.info(f"Finished in {str(datetime.now() - start_time)[:-7]}")

@@ -57,7 +57,49 @@ model = torch.nn.DataParallel(model)
 
 ########################## Quantize Aware Training ##################################
 
-""" NEED TO ADD CODE """
+class QuantizedModel(nn.Module):
+    def __init__(self, model_fp32):
+        super(QuantizedModel, self).__init__()
+        # QuantStub converts tensors from floating point to quantized.
+        # This will only be used for inputs.
+        self.quant = torch.quantization.QuantStub()
+        # DeQuantStub converts tensors from quantized to floating point.
+        # This will only be used for outputs.
+        self.dequant = torch.quantization.DeQuantStub()
+        # FP32 model
+        self.model_fp32 = model_fp32
+
+    def forward(self, x):
+        # manually specify where tensors will be converted from floating
+        # point to quantized in the quantized model
+        x = self.quant(x)
+        x = self.model_fp32(x)
+        # manually specify where tensors will be converted from quantized
+        # to floating point in the quantized model
+        x = self.dequant(x)
+        return x
+
+def prepareQAT(model, precision="fp16", backend="fbgemm", fuse_modules=None):
+    if precision == "fp16_comp" or precision == "fp16" or precision == "mixed":
+        model.half()
+        model.train()
+        return model
+    elif precision == "fp32" or precision == "fp32_comp":
+        model.train()
+        return model
+    elif precision == "int8_comp" or precision == "int8":
+        qmodel = QuantizedModel(model)
+        quantization_config = torch.quantization.get_default_qconfig("fbgemm")
+        qmodel.qconfig = quantization_config
+        torch.quantization.prepare_qat(qmodel, inplace=True)
+        qmodel.train()
+        return qmodel
+    
+
+model = prepareQAT(model, precision=args.precision)
+
+
+
 
 #### Setup Optimizer and Loss
 if args.aggregation == "crn":
@@ -144,10 +186,9 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
                 images = transforms.RandomHorizontalFlip()(images)
             
             # Compute features of all images (images contains queries, positives and negatives)
-            if args.precision == "fp16":
+            if args.precision == "fp16" or args.precision == "mixed" or args.precision == "fp16_comp":
                 with autocast():
                     features = model(images.to(args.device))
-                    
                     loss_triplet = 0
                     
                     if args.criterion == "triplet":
