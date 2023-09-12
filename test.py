@@ -188,8 +188,8 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     del database_features, all_features
     
     logging.debug("Calculating recalls")
-    print("===================", queries_features.shape)
     dummy_query = np.array([queries_features[0]])
+    logging.info(f"Descriptor Size is {dummy_query.nbytes} bytes")
     retrieval_times = []
     for _ in tqdm(range(100), desc="Computing Retrieval Time"):
         st = time.time()

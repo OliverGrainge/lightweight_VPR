@@ -31,6 +31,7 @@ from os.path import join
 from datetime import datetime
 from torch.utils.model_zoo import load_url
 from google_drive_downloader import GoogleDriveDownloader as gdd
+from util import count_parameters, quantize_model, measure_memory
 
 import test
 import util
@@ -101,8 +102,6 @@ logging.info(f"Test set: {test_ds}")
 
 ######################################## COUNT PARAMETERS #################################
 
-def count_parameters(model):
-    return sum(p.numel() for p in model.parameters())
 
 n_params = count_parameters(model)
 
@@ -113,73 +112,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 
 calibration_dataset = Subset(test_ds, list(range(test_ds.database_num, test_ds.database_num+test_ds.queries_num)))
-
-class mixedPrecision(nn.Module):
-    def __init__(self, model):
-        super().__init__()
-        self.model = model
-
-    def forward(self, x):
-        with autocast():
-            output = self.model(x)
-        return output
-
-
-def quantize_model(model, precision="fp16", calibration_dataset = None):
-    if precision == "fp32":
-        return model
-    elif precision=="mixed":
-        model = mixedPrecision(model)
-        return model
-    elif precision == "fp32_comp":
-        trt_model_fp32 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((args.infer_batch_size, 3, 480, 640), dtype=torch.float32)],
-            enabled_precisions = torch.float32, # Run with FP32
-            workspace_size = 1 << 22
-        )
-        return trt_model_fp32
-    elif precision == "fp16_comp":
-        trt_model_fp16 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((args.infer_batch_size, 3, 480, 640), dtype=torch.half)],
-            enabled_precisions = {torch.half}, # Run with FP16
-            workspace_size = 1 << 22
-        )
-
-        return trt_model_fp16
-
-    elif precision=="int8_comp":
-        if calibration_dataset is None:
-            raise Exception("must provide calibration dataset for int8 quantization")
-
-
-        testing_dataloader = torch.utils.data.DataLoader(
-            calibration_dataset, batch_size=args.infer_batch_size, shuffle=False, num_workers=1, drop_last=True
-        )
-
-        calibrator = torch_tensorrt.ptq.DataLoaderCalibrator(
-            testing_dataloader,
-            cache_file="./calibration.cache",
-            use_cache=False,
-            algo_type=torch_tensorrt.ptq.CalibrationAlgo.ENTROPY_CALIBRATION_2,
-            device=torch.device("cuda:0"),
-        )
-
-        trt_mod = torch_tensorrt.compile(model, inputs=[torch_tensorrt.Input((args.infer_batch_size, 3, 480, 640))],
-                                            enabled_precisions={torch.float, torch.half, torch.int8},
-                                            calibrator=calibrator,
-                                            device={
-                                                "device_type": torch_tensorrt.DeviceType.GPU,
-                                                "gpu_id": 0,
-                                                "dla_core": 0,
-                                                "allow_gpu_fallback": False,
-                                                "disable_tf32": False
-                                            })
-        
-        return trt_mod
-
-    elif precision=="int4":
-        raise NotImplementedError
-    
-
-model = quantize_model(model, precision=args.precision, calibration_dataset=calibration_dataset)
+model = quantize_model(model, precision=args.precision, calibration_dataset=calibration_dataset, args=args)
 
 
 """
@@ -195,25 +128,7 @@ else:
 
 
 ######################################## Measure Memory footprint ##########################
-
-def measure_memory(model, input_size):
-    if "comp" in args.precision:
-        input = torch.randn(input_size, dtype=torch.float32).cuda()
-        if args.precision == "mixed" or args.precision == "fp16" or args.precision == "fp16_comp":
-            input = input.half()
-        
-        torch.jit.save(model, 'tmp_model.pt')
-        size_in_bytes = os.path.getsize('tmp_model.pt')
-        os.remove('tmp_model.pt')
-        return size_in_bytes
-    else: 
-        torch.save(model.state_dict(), 'tmp_model.pt')
-        size_in_bytes = os.path.getsize('tmp_model.pt')
-        os.remove('tmp_model.pt')
-        return size_in_bytes
-
-#########################################
-model_size = measure_memory(model, input_size=(args.infer_batch_size, 3, 480, 640))
+model_size = measure_memory(model, input_size=(args.infer_batch_size, 3, 480, 640), args=args)
 logging.info(f"Model size is {model_size} bytes")
 
 

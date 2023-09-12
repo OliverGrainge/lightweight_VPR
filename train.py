@@ -20,6 +20,7 @@ import datasets_ws
 from model import network
 from model.sync_batchnorm import convert_model
 from model.functional import sare_ind, sare_joint
+from util import prepareQAT
 
 torch.backends.cudnn.benchmark = True  # Provides a speedup
 #### Initial setup: parser, logging...
@@ -56,47 +57,9 @@ if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize
 model = torch.nn.DataParallel(model)
 
 ########################## Quantize Aware Training ##################################
-
-class QuantizedModel(nn.Module):
-    def __init__(self, model_fp32):
-        super(QuantizedModel, self).__init__()
-        # QuantStub converts tensors from floating point to quantized.
-        # This will only be used for inputs.
-        self.quant = torch.quantization.QuantStub()
-        # DeQuantStub converts tensors from quantized to floating point.
-        # This will only be used for outputs.
-        self.dequant = torch.quantization.DeQuantStub()
-        # FP32 model
-        self.model_fp32 = model_fp32
-
-    def forward(self, x):
-        # manually specify where tensors will be converted from floating
-        # point to quantized in the quantized model
-        x = self.quant(x)
-        x = self.model_fp32(x)
-        # manually specify where tensors will be converted from quantized
-        # to floating point in the quantized model
-        x = self.dequant(x)
-        return x
-
-def prepareQAT(model, precision="fp16", backend="fbgemm", fuse_modules=None):
-    if precision == "fp16_comp" or precision == "fp16" or precision == "mixed":
-        model.half()
-        model.train()
-        return model
-    elif precision == "fp32" or precision == "fp32_comp":
-        model.train()
-        return model
-    elif precision == "int8_comp" or precision == "int8":
-        qmodel = QuantizedModel(model)
-        quantization_config = torch.quantization.get_default_qconfig("fbgemm")
-        qmodel.qconfig = quantization_config
-        torch.quantization.prepare_qat(qmodel, inplace=True)
-        qmodel.train()
-        return qmodel
-    
-
-model = prepareQAT(model, precision=args.precision)
+if args.QAT == True:
+    logging.debug("Fusing Model")
+    model = prepareQAT(model, precision=args.precision, args=args)
 
 
 
