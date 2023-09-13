@@ -2,7 +2,7 @@
 
 
 # training shufflenet 
-python train.py --backbone=shufflenetv2 --aggregation=gem --fc_output_dim=1024 --dataset_name=mapillary_sls --num_workers=16 --save_dir=shufflenet_gem_1024 --QAT=False
+#python train.py --backbone=shufflenetv2 --aggregation=gem --fc_output_dim=1024 --dataset_name=mapillary_sls --num_workers=16 --save_dir=shufflenet_gem_1024 --QAT=False
 
 # training efficientnet
 #python train.py --backbone=efficientnet_b0 --aggregation=gem --fc_output_dim=1024 --dataset_name=mapillary_sls --num_workers=16 --save_dir=efficientnetb0_gem_1024 --QAT=False

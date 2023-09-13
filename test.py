@@ -142,7 +142,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
             all_features = np.empty((len(eval_ds), args.features_dim), dtype="float32")
 
         for inputs, indices in tqdm(database_dataloader, ncols=100):
-            if args.precision == "mixed" or args.precision == "fp16" or args.precision == "fp16_comp":
+            if args.precision == "mixed" or args.precision == "fp16":
                 inputs = inputs.half()
             features = model(inputs.to(args.device)).float()
             if torch.isnan(features).any():
@@ -162,7 +162,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
             if test_method == "five_crops" or test_method == "nearest_crop" or test_method == 'maj_voting':
                 inputs = torch.cat(tuple(inputs))  # shape = 5*bs x 3 x 480 x 480
 
-            if args.precision == "mixed" or args.precision == "fp16" or args.precision == "fp16_comp":
+            if args.precision == "mixed" or args.precision == "fp16":
                 inputs = inputs.half()
 
             features = model(inputs.to(args.device)).float()
@@ -250,7 +250,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     # Divide by the number of queries*100, so the recalls are in percentages
     recalls = recalls / eval_ds.queries_num * 100
     recalls_str = ", ".join([f"R@{val}: {rec:.1f}" for val, rec in zip(args.recall_values, recalls)])
-    return recalls, recalls_str
+    return recalls, np.mean(retrieval_times), recalls_str
 
 
 def top_n_voting(topn, predictions, distances, maj_weight):

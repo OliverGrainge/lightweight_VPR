@@ -32,7 +32,7 @@ def benchmark_latency(
         input_tensor = input.cuda()
 
 
-    if precision == "fp16" or precision == "mixed" or precision == "fp16_comp":
+    if precision == "fp16" or precision == "mixed":
         input_tensor = input_tensor.half().cuda()
     model.to("cuda")
     for _ in range(10):
@@ -264,83 +264,6 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 
 
 
-
-class ShuffleNetV2Features(nn.Module):
-    def __init__(self, original_model):
-        super(ShuffleNetV2Features, self).__init__()
-        self.features = original_model.conv1
-        self.maxpool = original_model.maxpool
-        self.stage2 = original_model.stage2
-        self.stage3 = original_model.stage3
-        self.stage4 = original_model.stage4
-    
-    def forward(self, x):
-        x = self.features(x)
-        x = self.maxpool(x)
-        x = self.stage2(x)
-        x = self.stage3(x)
-        x = self.stage4(x)
-        return x
-
-
-
-
-def fuse_resnet18(model):
-    model.eval()
-
-    fuse_list = [['conv1', 'bn1', 'relu'],
-             ['layer1.0.conv1', 'layer1.0.bn1', 'layer1.0.relu'],
-             ['layer1.0.conv2', 'layer1.0.bn2'],
-             ['layer1.1.conv1', 'layer1.1.bn1', 'layer1.1.relu'],
-             ['layer1.1.conv2', 'layer1.1.bn2']]
-    
-    for fuse_modules in fuse_list:
-        torch.quantization.fuse_modules(model, fuse_modules)
-
-def fuse_resnet50(model):
-    model.eval()
-    # Fuse the first Conv2d + BatchNorm2d + ReLU layers
-    torch.quantization.fuse_modules(model, ['conv1', 'bn1', 'relu'])
-    # Fuse Conv2d + BatchNorm2d + ReLU layers for each Bottleneck block
-    for layer in [model.layer1, model.layer2, model.layer3, model.layer4]:
-        for bottleneck in layer:
-            # Fuse the layers in the Bottleneck sub-block
-            torch.quantization.fuse_modules(bottleneck, ['conv1', 'bn1', 'relu'])
-            torch.quantization.fuse_modules(bottleneck, ['conv2', 'bn2', 'relu'])
-            torch.quantization.fuse_modules(bottleneck, ['conv3', 'bn3'])
-
-
-def fuse_shufflenet(model):
-    model.eval()
-
-    # Fuse Conv2d + BatchNorm2d for the first Conv layer
-    torch.quantization.fuse_modules(model, ['conv1.0', 'conv1.1'])
-
-    # Fuse the Conv2d + BatchNorm2d + ReLU layers in each ShuffleNetUnit
-    for stage in [model.stage2, model.stage3, model.stage4]:
-        for i, module in enumerate(stage.modules()):
-            if isinstance(module, models.shufflenetv2.InvertedResidual):
-                for j, name in enumerate(['branch1.0', 'branch1.1']):
-                    torch.quantization.fuse_modules(module, [f'branch1.{j}.0', f'branch1.{j}.1'])
-                for j, name in enumerate(['branch2.0', 'branch2.1', 'branch2.3', 'branch2.4']):
-                    torch.quantization.fuse_modules(module, [f'branch2.{j}.0', f'branch2.{j}.1'])
-
-def fuse_effcientnet(model):
-    model.eval()
-    # Loop through the sub-modules to search for Conv2d + BatchNorm2d layers
-    for name, module in model.named_children():
-        if isinstance(module, torch.nn.Conv2d):
-            # Get the name of the BatchNorm2d layer
-            bn_name = name.replace("conv", "bn")
-            
-            # Check if the next named module is a BatchNorm2d layer
-            next_name, next_module = next(model.named_children())
-            if bn_name == next_name and isinstance(next_module, torch.nn.BatchNorm2d):
-                # Fuse Conv2d + BatchNorm2d
-                fuse_modules(model, [name, bn_name], inplace=True)
-
-        # Recursively apply to all child modules
-        fuse_effcientnet(module)
 
 
 

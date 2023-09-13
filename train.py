@@ -57,7 +57,7 @@ if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize
 model = torch.nn.DataParallel(model)
 
 ########################## Quantize Aware Training ##################################
-if args.QAT == True:
+if args.QAT == "True":
     logging.debug("Fusing Model")
     model = prepareQAT(model, precision=args.precision, args=args)
 
@@ -228,7 +228,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
                  f"average epoch triplet loss = {epoch_losses.mean():.4f}")
     
     # Compute recalls on validation set
-    recalls, recalls_str = test.test(args, val_ds, model)
+    recalls, _, recalls_str = test.test(args, val_ds, model)
     logging.info(f"Recalls on val set {val_ds}: {recalls_str}")
     
     is_best = recalls[1] > best_r5
@@ -260,5 +260,5 @@ logging.info(f"Trained for {epoch_num+1:02d} epochs, in total in {str(datetime.n
 best_model_state_dict = torch.load(join(args.save_dir, "best_model.pth"))["model_state_dict"]
 model.load_state_dict(best_model_state_dict)
 
-recalls, recalls_str = test.test(args, test_ds, model, test_method=args.test_method)
+recalls, _, recalls_str = test.test(args, test_ds, model, test_method=args.test_method)
 logging.info(f"Recalls on {test_ds}: {recalls_str}")

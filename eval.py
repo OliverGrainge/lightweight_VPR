@@ -19,6 +19,9 @@ results in VG)
 """
 
 import os
+os.environ['CUDA_MODULE_LOADING'] = 'LAZY'
+
+
 import sys
 import torch
 import parser
@@ -34,11 +37,12 @@ from google_drive_downloader import GoogleDriveDownloader as gdd
 from util import count_parameters, quantize_model, measure_memory
 
 import test
+import pandas as pd
 import util
 import commons
 import datasets_ws
 from model import network
-from scratch import benchmark_latency
+from util import benchmark_latency
 
 OFF_THE_SHELF_RADENOVIC = {
     'resnet50conv5_sfm'    : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/rSfM120k-tl-resnet50-gem-w-97bf910.pth',
@@ -60,6 +64,12 @@ commons.setup_logging(args.save_dir)
 commons.make_deterministic(args.seed)
 logging.info(f"Arguments: {args}")
 logging.info(f"The outputs are being saved in {args.save_dir}")
+df = pd.read_csv("results.csv", index_col="id")
+print(df.head())
+try:
+    result_data = df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision].to_dict()
+except: 
+    result_data = {}
 
 ######################################### MODEL #########################################
 model = network.GeoLocalizationNet(args).cuda().eval()
@@ -95,6 +105,12 @@ elif args.resume is not None:
 # Enable DataParallel after loading checkpoint, otherwise doing it before
 # would append "module." in front of the keys of the state dict triggering errors
 
+result_data["id"] = args.backbone + "_" + args.aggregation + "_" + args.precision
+result_data["model_path"] = args.resume
+result_data["fc_output_dim"] = args.fc_output_dim
+result_data["backbone"] = args.backbone 
+result_data["aggregation"] = args.aggregation
+result_data["precision"] = args.precision
 
 ######################################### DATASETS #########################################
 test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
@@ -129,18 +145,32 @@ else:
 
 ######################################## Measure Memory footprint ##########################
 model_size = measure_memory(model, input_size=(args.infer_batch_size, 3, 480, 640), args=args)
+result_data["model_size"] = model_size
 logging.info(f"Model size is {model_size} bytes")
 
 
 ######################################### TEST on TEST SET #################################
-recalls, recalls_str = test.test(args, test_ds, model, args.test_method, pca)
+recalls, retrieval_time, recalls_str = test.test(args, test_ds, model, args.test_method, pca)
+result_data[args.dataset_name + "_r@1"] = recalls[0]
+result_data[args.dataset_name + "_r@5"] = recalls[1]
+result_data[args.dataset_name + "_r@10"] = recalls[2]
+result_data[args.dataset_name + "_r@20"] = recalls[3]
+result_data["mean_retrieval_time"] = retrieval_time
 logging.info(f"Recalls on {test_ds}: {recalls_str}")
 
 
 ######################################## Test Latency ######################################
 torch.cuda.empty_cache()
 lat_mean, lat_var = benchmark_latency(model, input_size=(3, 480, 640), batch_size=args.infer_batch_size, precision=args.precision)
+result_data["mean_encoding_time"] = lat_mean
+result_data["std_encoding_time"] = lat_var
+result_data["retrieval_time"] = retrieval_time
+print("==================================================================")
+print(result_data)
 logging.info(f"Mean Inference Latency: {lat_mean}, STD Inference Latency: {lat_var}")
+
+df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision] = result_data
+df.to_csv("results.csv")
 
 ############################ LOGGING INFORMATION ##################################################
 logging.info(f"Model Precision: {args.precision}")

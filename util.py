@@ -14,6 +14,7 @@ import torch_tensorrt
 from torch.cuda.amp import autocast
 import datasets_ws
 import torch.nn as nn
+from tqdm import tqdm
 
 def get_flops(model, input_shape=(480, 640)):
     """Return the FLOPs as a string, such as '22.33 GFLOPs'"""
@@ -255,7 +256,7 @@ def quantize_model(model, precision="fp16", calibration_dataset = None, args=Non
         )
         return trt_model_fp32
     elif precision == "fp16_comp":
-        trt_model_fp16 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((args.infer_batch_size, 3, 480, 640), dtype=torch.half)],
+        trt_model_fp16 = torch_tensorrt.compile(model, inputs = [torch_tensorrt.Input((args.infer_batch_size, 3, 480, 640), dtype=torch.float32)],
             enabled_precisions = {torch.half}, # Run with FP16
             workspace_size = 1 << 22
         )
@@ -305,7 +306,7 @@ def count_parameters(model):
 def measure_memory(model, input_size, args):
     if "comp" in args.precision:
         input = torch.randn(input_size, dtype=torch.float32).cuda()
-        if args.precision == "mixed" or args.precision == "fp16" or args.precision == "fp16_comp":
+        if args.precision == "mixed" or args.precision == "fp16":
             input = input.half()
         
         torch.jit.save(model, 'tmp_model.pt')
@@ -317,3 +318,43 @@ def measure_memory(model, input_size, args):
         size_in_bytes = os.path.getsize('tmp_model.pt')
         os.remove('tmp_model.pt')
         return size_in_bytes
+    
+
+def benchmark_latency(
+    model, input=None, input_size=(3, 480, 640), batch_size=1, repetitions=100, precision="fp32"
+):
+
+    logging.debug("Testing Model Latency")
+    if input is None:
+        input_tensor = torch.randn((batch_size,) + input_size, dtype=torch.float32).to(
+            "cuda"
+        )
+    
+    if input is None:
+        input_tensor = torch.randn((batch_size,) + input_size, dtype=torch.float32).cuda()
+    else:
+        input_tensor = input.cuda()
+
+
+    if precision == "fp16" or precision == "mixed":
+        input_tensor = input_tensor.half().cuda()
+    model.to("cuda")
+    for _ in range(10):
+        output = model(input_tensor)
+        del output
+
+    # Time measurement using CUDA events
+    start_event = torch.cuda.Event(enable_timing=True)
+    end_event = torch.cuda.Event(enable_timing=True)
+
+    latencies = []
+    for _ in tqdm(range(repetitions)):
+        start_event.record()
+        output = model(input_tensor)
+        end_event.record()
+        torch.cuda.synchronize()
+        latencies.append(start_event.elapsed_time(end_event))
+
+    average_latency = np.mean(latencies)
+    std_latency = np.std(latencies)
+    return average_latency, std_latency

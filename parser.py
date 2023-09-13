@@ -25,7 +25,7 @@ def parse_arguments():
 
     parser.add_argument(
         "--QAT",
-        type=bool,
+        type=str,
         default=False,
         help="Precision to quantize model to",
     )
