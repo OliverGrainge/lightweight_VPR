@@ -174,6 +174,12 @@ def get_backbone(args):
             backbone = nn.Sequential(*list(model.children())[:-3])
         args.features_dim = get_output_channels_dim(backbone)
         return backbone
+    
+    if args.backbone.startswith("squeezenet"):
+        model = models.squeezenet1_0(pretrained=True)
+        backbone = nn.Sequential(*list(model.children())[:-1])
+        args.features_dim = get_output_channels_dim(backbone)
+        return backbone
 
     if args.backbone.startswith("resnet"):
         if args.pretrain in ["places", "gldv2"]:

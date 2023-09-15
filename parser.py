@@ -121,6 +121,7 @@ def parse_arguments():
             "shufflenetv2",
             "cct384",
             "vit",
+            "squeezenet"
         ],
         help="_",
     )

@@ -15,6 +15,7 @@ from torch.cuda.amp import autocast
 import datasets_ws
 import torch.nn as nn
 from tqdm import tqdm
+import copy
 
 def get_flops(model, input_shape=(480, 640)):
     """Return the FLOPs as a string, such as '22.33 GFLOPs'"""
@@ -99,29 +100,28 @@ class ShuffleNetV2Features(nn.Module):
 
 
 
-def fuse_resnet18(model):
-    model.eval()
+def fuse_resnet18(fused_model):
+    fused_model = torch.quantization.fuse_modules(fused_model, [["conv1", "bn1", "relu"]], inplace=True)
+    for module_name, module in fused_model.named_children():
+        if "layer" in module_name:
+            for basic_block_name, basic_block in module.named_children():
+                torch.quantization.fuse_modules(basic_block, [["conv1", "bn1"], ["conv2", "bn2"]], inplace=True)
+                for sub_block_name, sub_block in basic_block.named_children():
+                    
+                    if sub_block_name == "downsample":
+                        torch.quantization.fuse_modules(sub_block, [["0", "1"]], inplace=True)
 
-    fuse_list = [['conv1', 'bn1', 'relu'],
-             ['layer1.0.conv1', 'layer1.0.bn1', 'layer1.0.relu'],
-             ['layer1.0.conv2', 'layer1.0.bn2'],
-             ['layer1.1.conv1', 'layer1.1.bn1', 'layer1.1.relu'],
-             ['layer1.1.conv2', 'layer1.1.bn2']]
-    
-    for fuse_modules in fuse_list:
-        torch.quantization.fuse_modules(model, fuse_modules)
 
-def fuse_resnet50(model):
-    model.eval()
-    # Fuse the first Conv2d + BatchNorm2d + ReLU layers
-    torch.quantization.fuse_modules(model, ['conv1', 'bn1', 'relu'])
-    # Fuse Conv2d + BatchNorm2d + ReLU layers for each Bottleneck block
-    for layer in [model.layer1, model.layer2, model.layer3, model.layer4]:
-        for bottleneck in layer:
-            # Fuse the layers in the Bottleneck sub-block
-            torch.quantization.fuse_modules(bottleneck, ['conv1', 'bn1', 'relu'])
-            torch.quantization.fuse_modules(bottleneck, ['conv2', 'bn2', 'relu'])
-            torch.quantization.fuse_modules(bottleneck, ['conv3', 'bn3'])
+def fuse_resnet50(fused_model):
+    fused_model = torch.quantization.fuse_modules(fused_model, [["conv1", "bn1", "relu"]], inplace=True)
+    for module_name, module in fused_model.named_children():
+        if "layer" in module_name:
+            for basic_block_name, basic_block in module.named_children():
+                torch.quantization.fuse_modules(basic_block, [["conv1", "bn1"], ["conv2", "bn2"],
+                                                              ["conv3", "bn3"]], inplace=True)
+                for sub_block_name, sub_block in basic_block.named_children():
+                    if sub_block_name == "downsample":
+                        torch.quantization.fuse_modules(sub_block, [["0", "1"]], inplace=True)
 
 
 def fuse_shufflenet(model):
@@ -191,39 +191,75 @@ class QuantizedModel(nn.Module):
     
 
 
+def model_equivalence(model_1, model_2, device, rtol=1e-05, atol=1e-08, num_tests=100, input_size=(1,3,32,32)):
+
+    model_1.to(device)
+    model_2.to(device)
+
+    for _ in range(num_tests):
+        x = torch.rand(size=input_size).to(device)
+        y1 = model_1(x).detach().cpu().numpy()
+        y2 = model_2(x).detach().cpu().numpy()
+        if np.allclose(a=y1, b=y2, rtol=rtol, atol=atol, equal_nan=False) == False:
+            print("Model equivalence test sample failed: ")
+            print(y1.max(), y1.min())
+            print(y2.max(), y2.min())
+            return False
+    return True
 
 
 
-def prepareQAT(model, precision="fp16", backend="fbgemm", args=None):
-    model.eval()
+
+def prepareQAT(input_model, precision="fp16", backend="fbgemm", args=None):
+    input_model.eval()
 
     # Fuse the Modules together
     if args.backbone.startswith("resnet18"):
-        fuse_resnet18(model)
-        model.train()
+        fused_model = copy.deepcopy(input_model)
+        fuse_resnet18(fused_model)
+        input_model.eval()
+        fused_model.eval()
+        assert model_equivalence(model_1=input_model, model_2=fused_model, device="cpu", rtol=1e-01, atol=1e-04, num_tests=100, input_size=(1,3,32,32)), "Fused model is not equivalent to the original model!"
+        fused_model.train()
     elif args.backbone.startswith("resnet50"):
-        fuse_resnet50(model)
-        model.train()
+        fused_model = copy.deepcopy(input_model)
+        fuse_resnet50(fused_model)
+        input_model.eval()
+        fused_model.eval()
+        assert model_equivalence(model_1=input_model, model_2=fused_model, device="cpu", rtol=1e-01, atol=1e-04, num_tests=100, input_size=(1,3,32,32)), "Fused model is not equivalent to the original model!"
+        fused_model.train()
     elif args.backbone.startswith("efficientnet"):
-        fuse_effcientnet(model)
-        model.train()
+        fused_model = copy.deepcopy(input_model)
+        fuse_effcientnet(fused_model)
+        input_model.eval()
+        fused_model.eval()
+        assert model_equivalence(model_1=input_model, model_2=fused_model, device="cpu", rtol=1e-01, atol=1e-04, num_tests=100, input_size=(1,3,32,32)), "Fused model is not equivalent to the original model!"
+        fused_model.train()
     elif args.backbone.startswith("shufflenet"):
-        fuse_shufflenet(model)
-        model.train()
+        fused_model = copy.deepcopy(input_model)
+        fuse_shufflenet(fused_model)
+        input_model.eval()
+        fused_model.eval()
+        assert model_equivalence(model_1=input_model, model_2=fused_model, device="cpu", rtol=1e-01, atol=1e-04, num_tests=100, input_size=(1,3,32,32)), "Fused model is not equivalent to the original model!"
+        fused_model.train()
     elif args.backbone.startswith("mobilenet"):
-        fuse_mobilenet(model)
-        model.train()
+        fused_model = copy.deepcopy(input_model)
+        fuse_mobilenet(fused_model)
+        input_model.eval()
+        fused_model.eval()
+        assert model_equivalence(model_1=input_model, model_2=fused_model, device="cpu", rtol=1e-01, atol=1e-04, num_tests=100, input_size=(1,3,32,32)), "Fused model is not equivalent to the original model!"
+        fused_model.train()
 
     # quantize the model to lower precision
-    if precision == "fp16_comp" or precision == "fp16" or precision == "mixed":
-        model.half()
-        model.train()
-        return model
+    if precision == "fp16" or precision == "mixed":
+        fused_model.half()
+        fused_model.train()
+        return fused_model
     elif precision == "fp32" or precision == "fp32_comp":
-        model.train()
-        return model
+        fused_model.train()
+        return fused_model
     elif precision == "int8_comp" or precision == "int8":
-        qmodel = QuantizedModel(model)
+        qmodel = QuantizedModel(fused_model)
         quantization_config = torch.quantization.get_default_qconfig("fbgemm")
         qmodel.qconfig = quantization_config
         torch.quantization.prepare_qat(qmodel, inplace=True)

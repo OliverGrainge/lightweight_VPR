@@ -16,44 +16,6 @@ import os
 os.environ["CUDA_LAZY_DEBUG"] = "1"
 
 
-def benchmark_latency(
-    model, input=None, input_size=(3, 480, 640), batch_size=1, repetitions=100, precision="fp32"
-):
-
-    logging.debug("Testing Model Latency")
-    if input is None:
-        input_tensor = torch.randn((batch_size,) + input_size, dtype=torch.float32).to(
-            "cuda"
-        )
-    
-    if input is None:
-        input_tensor = torch.randn((batch_size,) + input_size, dtype=torch.float32).cuda()
-    else:
-        input_tensor = input.cuda()
-
-
-    if precision == "fp16" or precision == "mixed":
-        input_tensor = input_tensor.half().cuda()
-    model.to("cuda")
-    for _ in range(10):
-        output = model(input_tensor)
-        del output
-
-    # Time measurement using CUDA events
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-
-    latencies = []
-    for _ in tqdm(range(repetitions)):
-        start_event.record()
-        output = model(input_tensor)
-        end_event.record()
-        torch.cuda.synchronize()
-        latencies.append(start_event.elapsed_time(end_event))
-
-    average_latency = np.mean(latencies)
-    std_latency = np.std(latencies)
-    return average_latency, std_latency
 
 
 def benchmark_throughput(model, input_shape=(3, 224, 224), precision="fp32"):
@@ -266,12 +228,83 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 
 
 
+################################# QAT #############################################
+
+def calibrate_model(model, loader, device=torch.device("cpu:0")):
+
+    model.to(device)
+    model.eval()
+
+    for inputs, labels in loader:
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        _ = model(inputs)
+
+
+class QuantizedResNet18(nn.Module):
+    def __init__(self, model_fp32):
+        super(QuantizedResNet18, self).__init__()
+        # QuantStub converts tensors from floating point to quantized.
+        # This will only be used for inputs.
+        self.quant = torch.quantization.QuantStub()
+        # DeQuantStub converts tensors from quantized to floating point.
+        # This will only be used for outputs.
+        self.dequant = torch.quantization.DeQuantStub()
+        # FP32 model
+        self.model_fp32 = model_fp32
+
+    def forward(self, x):
+        # manually specify where tensors will be converted from floating
+        # point to quantized in the quantized model
+        x = self.quant(x)
+        x = self.model_fp32(x)
+        # manually specify where tensors will be converted from quantized
+        # to floating point in the quantized model
+        x = self.dequant(x)
+        return x
+    
+
+def model_equivalence(model_1, model_2, device, rtol=1e-05, atol=1e-08, num_tests=100, input_size=(1,3,32,32)):
+
+    model_1.to(device)
+    model_2.to(device)
+
+    for _ in range(num_tests):
+        x = torch.rand(size=input_size).to(device)
+        y1 = model_1(x).detach().cpu().numpy()
+        y2 = model_2(x).detach().cpu().numpy()
+        if np.allclose(a=y1, b=y2, rtol=rtol, atol=atol, equal_nan=False) == False:
+            print("Model equivalence test sample failed: ")
+            print(y1.max(), y1.min())
+            print(y2.max(), y2.min())
+            return False
+    return True
 
 
 if __name__ == "__main__":
-    import timm
-    import torchvision.models as models
-    model = timm.create_model("efficientnet_b0", pretrained=True)
+    import faiss
+    import numpy as np
 
-    fuse_effcientnet(model)
-    print(model)
+    # Generate some data
+    n_data, d = 9985, 128                           
+    data = np.random.random((n_data, d)).astype('float32')
+    query = np.random.random((1, d)).astype('float32')
+
+    # Build the index
+    quantizer = faiss.IndexFlatL2(d)  
+    index = faiss.IndexIVFPQ(quantizer, d, 10, 8, 8)
+    index.train(data)
+    index.add(data)
+
+    # Convert index to int8
+    index = faiss.IndexQuantizer(quantizer, 8)
+
+    # Perform a search
+    k = 5  # we want to see 5 nearest neighbors
+    D, I = index.search(query, k)
+        
+
+
+
+
+

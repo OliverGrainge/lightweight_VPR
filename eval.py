@@ -65,9 +65,19 @@ commons.make_deterministic(args.seed)
 logging.info(f"Arguments: {args}")
 logging.info(f"The outputs are being saved in {args.save_dir}")
 df = pd.read_csv("results.csv", index_col="id")
-print(df.head())
+
+if args.resume is not None:
+    QAT_FLAG = "PTQ"
+    if "int8" in args.resume or "fp16" in args.resume:
+        QAT_FLAG = "QAT"
+else: 
+    QAT_FLAG = "PTQ"
+
+print( "stanfastic ================================================", QAT_FLAG)
+
+
 try:
-    result_data = df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision].to_dict()
+    result_data = df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG].to_dict()
 except: 
     result_data = {}
 
@@ -105,7 +115,8 @@ elif args.resume is not None:
 # Enable DataParallel after loading checkpoint, otherwise doing it before
 # would append "module." in front of the keys of the state dict triggering errors
 
-result_data["id"] = args.backbone + "_" + args.aggregation + "_" + args.precision
+
+result_data["id"] = args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG
 result_data["model_path"] = args.resume
 result_data["fc_output_dim"] = args.fc_output_dim
 result_data["backbone"] = args.backbone 
@@ -150,8 +161,9 @@ logging.info(f"Model size is {model_size} bytes")
 
 
 ######################################### TEST on TEST SET #################################
-recalls, retrieval_time, recalls_str = test.test(args, test_ds, model, args.test_method, pca)
+recalls, retrieval_time, feature_bytes, recalls_str = test.test(args, test_ds, model, args.test_method, pca)
 result_data[args.dataset_name + "_r@1"] = recalls[0]
+result_data["descriptor_size"] = feature_bytes
 result_data[args.dataset_name + "_r@5"] = recalls[1]
 result_data[args.dataset_name + "_r@10"] = recalls[2]
 result_data[args.dataset_name + "_r@20"] = recalls[3]
@@ -169,7 +181,7 @@ print("==================================================================")
 print(result_data)
 logging.info(f"Mean Inference Latency: {lat_mean}, STD Inference Latency: {lat_var}")
 
-df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision] = result_data
+df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG] = result_data
 df.to_csv("results.csv")
 
 ############################ LOGGING INFORMATION ##################################################

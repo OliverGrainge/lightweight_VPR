@@ -197,6 +197,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
         et = time.time()
         retrieval_times.append(et - st)
 
+    feature_bytes = dummy_query.nbytes
     logging.info(f"mean retrieval time: {np.mean(retrieval_times)} --- std retrieval time: {np.std(retrieval_times)}")
     distances, predictions = faiss_index.search(queries_features, max(args.recall_values))
     
@@ -250,7 +251,7 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
     # Divide by the number of queries*100, so the recalls are in percentages
     recalls = recalls / eval_ds.queries_num * 100
     recalls_str = ", ".join([f"R@{val}: {rec:.1f}" for val, rec in zip(args.recall_values, recalls)])
-    return recalls, np.mean(retrieval_times), recalls_str
+    return recalls, np.mean(retrieval_times), feature_bytes, recalls_str
 
 
 def top_n_voting(topn, predictions, distances, maj_weight):
