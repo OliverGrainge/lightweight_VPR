@@ -22,6 +22,7 @@ from model.sync_batchnorm import convert_model
 from model.functional import sare_ind, sare_joint
 from util import prepareQAT
 
+batch_num = 0
 torch.backends.cudnn.benchmark = True  # Provides a speedup
 #### Initial setup: parser, logging...
 args = parser.parse_arguments()
@@ -32,6 +33,7 @@ commons.make_deterministic(args.seed)
 logging.info(f"Arguments: {args}")
 logging.info(f"The outputs are being saved in {args.save_dir}")
 logging.info(f"Using {torch.cuda.device_count()} GPUs and {multiprocessing.cpu_count()} CPUs")
+
 
 #### Creation of Datasets
 logging.debug(f"Loading dataset {args.dataset_name} from folder {args.datasets_folder}")
@@ -45,14 +47,33 @@ logging.info(f"Val set: {val_ds}")
 test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
 logging.info(f"Test set: {test_ds}")
 
+
 #### Initialize model
 model = network.GeoLocalizationNet(args)
 model = model.to(args.device)
-if args.aggregation in ["netvlad", "crn"]:  # If using NetVLAD layer, initialize it
+
+
+if args.aggregation in ["netvlad", "crn"] and args.fc_output_dim is None:  # If using NetVLAD layer, initialize it
     if not args.resume:
         triplets_ds.is_inference = True
-        model.aggregation.initialize_netvlad_layer(args, triplets_ds, model.backbone)
+        if args.fc_output_dim != None:
+            model.aggregation[0].initialize_netvlad_layer(args, triplets_ds, model.backbone)
+        else: 
+            model.aggregation.initialize_netvlad_layer(args, triplets_ds, model.backbone)
+
     args.features_dim *= args.netvlad_clusters
+
+if args.aggregation in ["netvlad", "crn"] and args.fc_output_dim is not None:  # If using NetVLAD layer, initialize it
+    if not args.resume:
+        triplets_ds.is_inference = True
+        if args.fc_output_dim != None:
+            model.aggregation[0].initialize_netvlad_layer(args, triplets_ds, model.backbone)
+        else: 
+            model.aggregation.initialize_netvlad_layer(args, triplets_ds, model.backbone)
+
+    args.features_dim = args.fc_output_dim
+
+
 
 model = torch.nn.DataParallel(model)
 
@@ -82,7 +103,7 @@ else:
     elif args.optim == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001)
 
-if args.precision == "fp16":
+if args.mixed_precision_training:
     scaler = GradScaler()
 
 if args.criterion == "triplet":
@@ -116,6 +137,7 @@ if torch.cuda.device_count() >= 2:
     model = model.cuda()
 
 #### Training loop
+    
 for epoch_num in range(start_epoch_num, args.epochs_num):
     logging.info(f"Start training epoch: {epoch_num:02d}")
     
@@ -149,7 +171,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
                 images = transforms.RandomHorizontalFlip()(images)
             
             # Compute features of all images (images contains queries, positives and negatives)
-            if args.precision == "fp16" or args.precision == "mixed" or args.precision == "fp16_comp":
+            if args.mixed_precision_training:
                 with autocast():
                     features = model(images.to(args.device))
                     loss_triplet = 0
@@ -205,15 +227,24 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
             del features
             loss_triplet /= (args.train_batch_size * args.negs_num_per_query)
             
-            optimizer.zero_grad()
-
-            if args.precision == "fp16":
+            if args.mixed_precision_training:
                 scaler.scale(loss_triplet).backward()
-                scaler.step(optimizer)
-                scaler.update()
+                #scaler.step(optimizer)
+                #scaler.update()
             else:
                 loss_triplet.backward()
-                optimizer.step()
+                #optimizer.step()
+
+            batch_num = batch_num + 1
+            if batch_num == args.accrue_gradient:
+                if args.mixed_precision_training:
+                    scaler.step(optimizer)
+                    scaler.update()
+                else:
+                    optimizer.step()
+                batch_num = 0
+                optimizer.zero_grad()
+
             
             # Keep track of all losses by appending them to epoch_losses
             batch_loss = loss_triplet.item()

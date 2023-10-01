@@ -276,6 +276,10 @@ class NetVLAD(nn.Module):
         self.init_params(kmeans.centroids, descriptors)
         self = self.to(args.device)
 
+        if args.fc_output_dim is not None:
+            args.features_dim = args.fc_output_dim
+
+
 
 class CRNModule(nn.Module):
     def __init__(self, dim):

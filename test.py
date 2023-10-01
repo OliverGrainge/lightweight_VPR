@@ -55,7 +55,8 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
                                          batch_size=args.infer_batch_size, pin_memory=(args.device == "cuda"))
         for inputs, indices in tqdm(database_dataloader, ncols=100):
             inputs = inputs.to(args.device)
-            features = model(inputs).float()
+            with torch.no_grad():
+                features = model(inputs).float()
             for pn, (index, pred_feature) in enumerate(zip(indices, features)):
                 distances[:, index] = ((queries_features-pred_feature)**2).sum(1).cpu().numpy()
         del features, queries_features, pred_feature
@@ -144,7 +145,8 @@ def test(args, eval_ds, model, test_method="hard_resize", pca=None):
         for inputs, indices in tqdm(database_dataloader, ncols=100):
             if args.precision == "mixed" or args.precision == "fp16":
                 inputs = inputs.half()
-            features = model(inputs.to(args.device)).float()
+            with torch.no_grad():
+                features = model(inputs.to(args.device)).float()
             if torch.isnan(features).any():
                 raise Exception("Features have NAN in them")
             features = features.cpu().numpy()

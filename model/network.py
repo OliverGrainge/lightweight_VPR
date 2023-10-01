@@ -36,7 +36,6 @@ class GeoLocalizationNet(nn.Module):
         self.arch_name = args.backbone
         self.aggregation = get_aggregation(args)
 
-
         if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
             if args.l2 == "before_pool":
                 self.aggregation = nn.Sequential(L2Norm(), self.aggregation, nn.Flatten())
@@ -45,14 +44,20 @@ class GeoLocalizationNet(nn.Module):
             elif args.l2 == "none":
                 self.aggregation = nn.Sequential(self.aggregation, nn.Flatten())
 
-        if args.fc_output_dim != None:
-           # # Concatenate fully connected layer to the aggregation layer
-            self.aggregation = nn.Sequential(
-                self.aggregation,
-                nn.Linear(args.features_dim, args.fc_output_dim),
-                L2Norm(),
-            )
+        if args.fc_output_dim != None and args.aggregation != "netvlad":
+            #Concatenate fully connected layer to the aggregation layer
+            self.aggregation = nn.Sequential(self.aggregation,
+                                             nn.Linear(args.features_dim, args.fc_output_dim),
+                                             L2Norm())
             args.features_dim = args.fc_output_dim
+
+        if args.fc_output_dim != None and args.aggregation == "netvlad":
+                        self.aggregation = nn.Sequential(self.aggregation,
+                                             nn.Linear(self.aggregation.clusters_num * self.aggregation.dim, args.fc_output_dim),
+                                             L2Norm())
+            #args.features_dim = args.fc_output_dim
+
+        
 
     def forward(self, x):
         x = self.backbone(x)

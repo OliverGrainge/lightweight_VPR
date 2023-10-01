@@ -96,6 +96,17 @@ def parse_arguments():
         default="partial",
         choices=["partial", "full", "random", "msls_weighted"],
     )
+    parser.add_argument(
+        "--mixed_precision_training",
+        type=bool,
+        default=True,
+    )
+
+    parser.add_argument(
+        "--accrue_gradient",
+        type=int,
+        default=1,
+    )
     # Model parameters
     parser.add_argument(
         "--backbone",
