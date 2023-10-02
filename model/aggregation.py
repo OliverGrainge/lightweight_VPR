@@ -12,6 +12,16 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 import model.functional as LF
 import model.normalization as normalization
 
+class L2Norm(nn.Module):
+    def __init__(self, dim=1):
+        super().__init__()
+        self.dim = dim
+        
+    def forward(self, x):
+        return F.normalize(x, p=2.0, dim=self.dim)
+
+
+
 
 class MAC(nn.Module):
     def __init__(self):
