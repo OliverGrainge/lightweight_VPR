@@ -81,7 +81,7 @@ def parse_arguments():
     parser.add_argument(
         "--negs_num_per_query",
         type=int,
-        default=10,
+        default=1,
         help="How many negatives to consider per each query in the loss",
     )
     parser.add_argument(
@@ -213,7 +213,8 @@ def parse_arguments():
     parser.add_argument(
         "--resize",
         type=int,
-        default=[480, 640],
+        #default=[480, 640],
+        default=[240, 320],
         nargs=2,
         help="Resizing shape for images (HxW).",
     )

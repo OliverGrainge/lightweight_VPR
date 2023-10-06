@@ -190,7 +190,7 @@ class TripletsDataset(BaseDataset):
         datasets_folder="datasets",
         dataset_name="pitts30k",
         split="train",
-        negs_num_per_query=10,
+        negs_num_per_query=5,
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
         self.mining = args.mining

@@ -198,7 +198,7 @@ for epoch_num in range(start_epoch_num, args.epochs_num):
                             q_i, p_i, n_i = triplet
                             loss_triplet += criterion_triplet(features[q_i:q_i+1], features[p_i:p_i+1], features[n_i:n_i+1])
             
-            else: 
+            else:
                 features = model(images.to(args.device))
                 
                 loss_triplet = 0
