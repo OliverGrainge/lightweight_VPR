@@ -72,7 +72,7 @@
 ##################################### Train with NetVLAD ###################################################################################################
 
 #train vgg16
-python train.py --backbone=vgg16 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=vgg16_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=False --accrue_gradient=4 --fc_output_dim=1024
+python train.py --backbone=mobilenetv2conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=testing --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=2 --fc_output_dim=1024
 
 # training mobilenet
 python train.py --backbone=mobilenetv2conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=mobilenetv2conv4_netvlad_1024 --QAT=False --train_batch_size=1 --mixed_precision_training=False --accrue_gradient=4 --infer_batch_size=1 --fc_output_dim=1024

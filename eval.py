@@ -114,7 +114,8 @@ elif args.resume is not None:
     model = util.resume_model(args, model)
 # Enable DataParallel after loading checkpoint, otherwise doing it before
 # would append "module." in front of the keys of the state dict triggering errors
-
+if args.fc_output_dim is not None:
+    args.features_dim = args.fc_output_dim
 
 result_data["id"] = args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG
 result_data["model_path"] = args.resume
@@ -140,7 +141,6 @@ from torch.utils.data.dataset import Subset
 
 calibration_dataset = Subset(test_ds, list(range(test_ds.database_num, test_ds.database_num+test_ds.queries_num)))
 model = quantize_model(model, precision=args.precision, calibration_dataset=calibration_dataset, args=args)
-
 
 """
 model = torch.nn.DataParallel(model)

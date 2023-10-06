@@ -38,15 +38,21 @@ logging.info(f"Using {torch.cuda.device_count()} GPUs and {multiprocessing.cpu_c
 #### Creation of Datasets
 logging.debug(f"Loading dataset {args.dataset_name} from folder {args.datasets_folder}")
 
+logging.debug("Setting up train triplet dataset")
 triplets_ds = datasets_ws.TripletsDataset(args, args.datasets_folder, args.dataset_name, "train", args.negs_num_per_query)
 logging.info(f"Train query set: {triplets_ds}")
+
+logging.debug("setup train dataset")
 
 val_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "val")
 logging.info(f"Val set: {val_ds}")
 
+logging.debug("setup validation dataset")
+
 test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
 logging.info(f"Test set: {test_ds}")
 
+logging.debug("setup test dataset")
 
 #### Initialize model
 model = network.GeoLocalizationNet(args)
@@ -62,6 +68,7 @@ if args.aggregation in ["netvlad", "crn"] and args.fc_output_dim is None:  # If 
             model.aggregation.initialize_netvlad_layer(args, triplets_ds, model.backbone)
 
     args.features_dim *= args.netvlad_clusters
+    logging.debug("setup netvlad aggregation")
 
 if args.aggregation in ["netvlad", "crn"] and args.fc_output_dim is not None:  # If using NetVLAD layer, initialize it
     if not args.resume:
@@ -72,7 +79,7 @@ if args.aggregation in ["netvlad", "crn"] and args.fc_output_dim is not None:  #
             model.aggregation.initialize_netvlad_layer(args, triplets_ds, model.backbone)
 
     args.features_dim = args.fc_output_dim
-
+    logging.debug("setup netvlad aggregation")
 
 
 model = torch.nn.DataParallel(model)
@@ -102,6 +109,8 @@ else:
         optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     elif args.optim == "sgd":
         optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.001)
+
+logging.debug("built optimizer")
 
 if args.mixed_precision_training:
     scaler = GradScaler()

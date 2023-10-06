@@ -12,6 +12,7 @@ import torchvision.transforms as T
 from torch.utils.data.dataset import Subset
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.data.dataloader import DataLoader
+import logging
 
 
 base_transform = T.Compose(
@@ -79,6 +80,7 @@ class BaseDataset(data.Dataset):
         self, args, datasets_folder="datasets", dataset_name="pitts30k", split="train"
     ):
         super().__init__()
+        logging.debug("setting up dataset")
         self.args = args
         self.dataset_name = dataset_name
         self.dataset_folder = join(datasets_folder, dataset_name, "images", split)
@@ -91,16 +93,19 @@ class BaseDataset(data.Dataset):
         #### Read paths and UTM coordinates for all images.
         database_folder = join(self.dataset_folder, "database")
         queries_folder = join(self.dataset_folder, "queries")
+        
         if not os.path.exists(database_folder):
             raise FileNotFoundError(f"Folder {database_folder} does not exist")
         if not os.path.exists(queries_folder):
             raise FileNotFoundError(f"Folder {queries_folder} does not exist")
+        logging.debug("found dataset folder")
         self.database_paths = sorted(
             glob(join(database_folder, "**", "*.jpg"), recursive=True)
         )
         self.queries_paths = sorted(
             glob(join(queries_folder, "**", "*.jpg"), recursive=True)
         )
+        logging.debug("read image names")
 
         # The format must be path/to/file/@utm_easting@utm_northing@...@.jpg
         self.database_utms = np.array(
@@ -109,6 +114,7 @@ class BaseDataset(data.Dataset):
         self.queries_utms = np.array(
             [(path.split("@")[1], path.split("@")[2]) for path in self.queries_paths]
         ).astype(float)
+        logging.debug("checked image names")
 
         # Find soft_positives_per_query, which are within val_positive_dist_threshold (deafult 25 meters)
         knn = NearestNeighbors(n_jobs=-1)
@@ -119,6 +125,7 @@ class BaseDataset(data.Dataset):
             return_distance=False,
         )
 
+        logging.debug("found soft positive with knn")
         self.images_paths = list(self.database_paths) + list(self.queries_paths)
         self.database_num = len(self.database_paths)
         self.queries_num = len(self.queries_paths)
@@ -193,6 +200,7 @@ class TripletsDataset(BaseDataset):
         negs_num_per_query=5,
     ):
         super().__init__(args, datasets_folder, dataset_name, split)
+        logging.debug("setting up triplet dataset")
         self.mining = args.mining
         self.neg_samples_num = (
             args.neg_samples_num
@@ -232,7 +240,8 @@ class TripletsDataset(BaseDataset):
                 T.RandomRotation(degrees=args.random_rotation),
                 self.resized_transform,
             ]
-        )
+        )   
+        logging.debug("finindg nearest neighbors")
 
         # Find hard_positives_per_query, which are within train_positives_dist_threshold (10 meters)
         knn = NearestNeighbors(n_jobs=-1)
@@ -245,6 +254,7 @@ class TripletsDataset(BaseDataset):
             )
         )
 
+        logging.debug("found hard positives")
         #### Some queries might have no positive, we should remove those queries.
         queries_without_any_hard_positive = np.where(
             np.array([len(p) for p in self.hard_positives_per_query], dtype=object) == 0
@@ -254,7 +264,7 @@ class TripletsDataset(BaseDataset):
                 f"There are {len(queries_without_any_hard_positive)} queries without any positives "
                 + "within the training set. They won't be considered as they're useless for training."
             )
-
+        logging.debug("removing queries without positives")
         # Remove queries without positives
         print("++++++++++++++++++++++++++++++++++++++++++++")
         self.hard_positives_per_query = [
@@ -263,11 +273,13 @@ class TripletsDataset(BaseDataset):
             if i not in queries_without_any_hard_positive
         ]
 
+        logging.debug("removed hard positives")
         self.queries_paths = [
             arr
             for i, arr in enumerate(self.queries_paths)
             if i not in queries_without_any_hard_positive
         ]
+        logging.debug("removes netagives")
         print("+++++++++++++++++++++++++++++++++++++++++++++")
         """
         self.hard_positives_per_query = np.delete(
@@ -281,6 +293,7 @@ class TripletsDataset(BaseDataset):
         # Recompute images_paths and queries_num because some queries might have been removed
         self.images_paths = list(self.database_paths) + list(self.queries_paths)
         self.queries_num = len(self.queries_paths)
+        logging.debug("recompute image_paths and queries number")
 
         # msls_weighted refers to the mining presented in MSLS paper's supplementary.
         # Basically, images from uncommon domains are sampled more often. Works only with MSLS dataset.

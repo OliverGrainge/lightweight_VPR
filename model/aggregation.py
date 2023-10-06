@@ -241,6 +241,10 @@ class NetVLAD(nn.Module):
         if args.fc_output_dim is not None:
             args.features_dim = args.fc_output_dim
 
+    def set_output_dim(self, args):
+        if args.fc_output_dim is not None:
+            args.features_dim = args.fc_output_dim
+
   
     def forward(self, x):
         N, D, H, W = x.shape[:]
