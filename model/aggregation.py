@@ -197,7 +197,7 @@ class NetVLAD(nn.Module):
 
     def initialize_netvlad_layer(self, args, cluster_ds, backbone):
         descriptors_num = 50000
-        descs_num_per_image = 100
+        descs_num_per_image = 40
         images_num = math.ceil(descriptors_num / descs_num_per_image)
         random_sampler = SubsetRandomSampler(
             np.random.choice(len(cluster_ds), images_num, replace=False)
@@ -343,7 +343,7 @@ class OrigNetVLAD(nn.Module):
 
     def initialize_netvlad_layer(self, args, cluster_ds, backbone):
         descriptors_num = 50000
-        descs_num_per_image = 100
+        descs_num_per_image = 80
         images_num = math.ceil(descriptors_num / descs_num_per_image)
         random_sampler = SubsetRandomSampler(
             np.random.choice(len(cluster_ds), images_num, replace=False)

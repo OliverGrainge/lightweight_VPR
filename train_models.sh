@@ -72,25 +72,25 @@
 ##################################### Train with NetVLAD ###################################################################################################
 
 #train vgg16
-python train.py --backbone=mobilenetv2conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=testing --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=2 --fc_output_dim=1024
+python train.py --backbone=vgg16 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=vgg16_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=2 --fc_output_dim=1024
 
 # training mobilenet
-python train.py --backbone=mobilenetv2conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=mobilenetv2conv4_netvlad_1024 --QAT=False --train_batch_size=1 --mixed_precision_training=False --accrue_gradient=4 --infer_batch_size=1 --fc_output_dim=1024
+python train.py --backbone=mobilenetv2conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=mobilenetv2conv4_netvlad_1024 --QAT=False --train_batch_size=1 --mixed_precision_training=True --accrue_gradient=2 --infer_batch_size=1 --fc_output_dim=1024
 
 # training resnet50
-python train.py --backbone=resnet50conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet50_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=False --accrue_gradient=4 --fc_output_dim=1024
+python train.py --backbone=resnet50conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet50_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=2 --fc_output_dim=1024
 
 # training efficientnet:
-python train.py --backbone=efficientnet_b0 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=efficientnetb0_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --accrue_gradient=4 --mixed_precision_training=False --fc_output_dim=1024 --resume=/home/oliver/Documents/github/lightweight_VPR/logs/efficientnetb0_mac_1024/2023-10-02_05-36-39/best_model.pth
+python train.py --backbone=efficientnet_b0 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=efficientnetb0_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --accrue_gradient=2 --mixed_precision_training=True --fc_output_dim=1024 
 
 # training resnet18
-python train.py --backbone=resnet18conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet18_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --accrue_gradient=4 --mixed_precision_training=False --fc_output_dim=1024
+python train.py --backbone=resnet18conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet18_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --accrue_gradient=2 --mixed_precision_training=True --fc_output_dim=1024
 
 # training shufflenet 
-python train.py --backbone=squeezenet --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=squeezenet_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=False --accrue_gradient=4 --fc_output_dim=1024
+python train.py --backbone=squeezenet --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=squeezenet_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=2 --fc_output_dim=1024
 
 #train resnet101
-python train.py --backbone=resnet101conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet101_netvlad_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=False --accrue_gradient=4 --fc_output_dim=1024
+python train.py --backbone=resnet101conv4 --aggregation=netvlad --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet101_netvlads_1024 --QAT=False --train_batch_size=1 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=2 --fc_output_dim=1024
 
 
 ##################################### Train Resolution Models #########################################################################################
