@@ -33,7 +33,7 @@ def parse_arguments():
     parser.add_argument(
         "--infer_batch_size",
         type=int,
-        default=2,
+        default=1,
         help="Batch size for inference (caching and testing)",
     )
     parser.add_argument(

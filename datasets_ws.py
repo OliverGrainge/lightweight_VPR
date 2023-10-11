@@ -98,6 +98,9 @@ class BaseDataset(data.Dataset):
             raise FileNotFoundError(f"Folder {database_folder} does not exist")
         if not os.path.exists(queries_folder):
             raise FileNotFoundError(f"Folder {queries_folder} does not exist")
+        print(" ")
+        print(database_folder)
+        print(" ")
         logging.debug("found dataset folder")
         self.database_paths = sorted(
             glob(join(database_folder, "**", "*.jpg"), recursive=True)
