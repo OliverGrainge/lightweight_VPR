@@ -72,25 +72,25 @@
 ##################################### Train with NetVLAD ###################################################################################################
 
 #train vgg16
-python train.py --backbone=vgg16 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=vgg16_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
+#python train.py --backbone=vgg16 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=vgg16_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 
 # training mobilenet
-python train.py --backbone=mobilenetv2conv4 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=mobilenetv2conv4_spoc_1024 --QAT=False --train_batch_size=2 --mixed_precision_training=True --accrue_gradient=1 --infer_batch_size=1 --fc_output_dim=1024
+#python train.py --backbone=mobilenetv2conv4 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=mobilenetv2conv4_spoc_1024 --QAT=False --train_batch_size=2 --mixed_precision_training=True --accrue_gradient=1 --infer_batch_size=1 --fc_output_dim=1024
 
 # training resnet50
-python train.py --backbone=resnet50conv4 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet50_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
+#python train.py --backbone=resnet50conv4 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet50_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 
 # training efficientnet:
-python train.py --backbone=efficientnet_b0 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=efficientnetb0_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --accrue_gradient=1 --mixed_precision_training=True --fc_output_dim=1024 
+#python train.py --backbone=efficientnet_b0 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=efficientnetb0_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --accrue_gradient=1 --mixed_precision_training=True --fc_output_dim=1024 
 
 # training resnet18
-python train.py --backbone=resnet18conv4 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet18_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --accrue_gradient=1 --mixed_precision_training=True --fc_output_dim=1024
+#python train.py --backbone=resnet18conv4 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet18_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --accrue_gradient=1 --mixed_precision_training=True --fc_output_dim=1024
 
 # training shufflenet 
-python train.py --backbone=squeezenet --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=squeezenet_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
+#python train.py --backbone=squeezenet --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=squeezenet_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 
 #train resnet101
-python train.py --backbone=resnet101conv4 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet101_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
+#python train.py --backbone=resnet101conv4 --aggregation=spoc --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet101_spoc_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 
 
 ##################################### Train Resolution Models #########################################################################################
@@ -122,7 +122,7 @@ python train.py --backbone=resnet101conv4 --aggregation=spoc --dataset_name=mapi
 
 
 
-
+python train.py --backbone=resnet101conv4 --aggregation=gem --dataset_name=mapillary_sls --num_workers=16 --save_dir=resnet101_gem_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 
 
 
