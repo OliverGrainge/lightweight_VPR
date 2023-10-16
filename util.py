@@ -36,8 +36,6 @@ def resume_model(args, model):
     checkpoint = torch.load(args.resume, map_location=args.device)
     if 'model_state_dict' in checkpoint:
         state_dict = checkpoint['model_state_dict']
-        print(list(state_dict.keys()))
-        print(list(model.state_dict().keys()))
     else:
         # The pre-trained models that we provide in the README do not have 'state_dict' in the keys as
         # the checkpoint is directly the state dict
@@ -46,6 +44,10 @@ def resume_model(args, model):
     # DataParallel, remove it to avoid errors when loading dict
     if list(state_dict.keys())[0].startswith('module'):
         state_dict = OrderedDict({k.replace('module.', ''): v for (k, v) in state_dict.items()})
+
+    for i, layer_name in enumerate(list(state_dict.keys())):
+        if layer_name != list(model.state_dict().keys())[i]:
+            print(layer_name != list(model.state_dict().keys())[i])
     model.load_state_dict(state_dict)
     return model
 
