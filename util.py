@@ -34,7 +34,7 @@ def save_checkpoint(args, state, is_best, filename):
 
 def resume_model(args, model):
     checkpoint = torch.load(args.resume, map_location=args.device)
-    print(checkpoint.keys())
+    print('=====================================================', list(checkpoint.keys()))
     if 'model_state_dict' in checkpoint:
         state_dict = checkpoint['model_state_dict']
     else:
