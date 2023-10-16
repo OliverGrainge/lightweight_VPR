@@ -4,6 +4,9 @@ import seaborn as sns
 
 
 data = pd.read_csv("results.csv")
+data['precision'] = data['precision'].replace("fp32_comp", "fp32")
+data['precision'] = data['precision'].replace("fp16_comp", "fp16")
+data['precision'] = data['precision'].replace("int8_comp", "int8")
 #data = data[data['backbone'] in ['efficientnet_b0', 'resnet50_conv4']
 #data = data[data["aggregation"] == "gem"]
 
@@ -29,11 +32,10 @@ fig, ax = plt.subplots(2, 1, figsize=(15, 12))
 
 # Encoding Latency
 sns.boxplot(data=data, x='backbone', y='mean_encoding_time', hue='precision', ax=ax[0], palette="Set2")
-ax[0].set_title('Distribution of Mean Encoding Time by Backbone and Precision')
-ax[0].set_ylabel('Mean Encoding Time (seconds)')
+ax[0].set_title('Feature Encoding Time by Backbone and Precision', fontsize='19')
+ax[0].set_ylabel('Encoding Time (seconds)', fontsize='16')
 ax[0].set_xlabel('Backbone')
 ax[0].legend(title='Precision', loc='upper right')
-
 # Memory Size
 sns.boxplot(data=data, x='backbone', y='model_size', hue='precision', ax=ax[1], palette="Set2")
 ax[1].set_title('Distribution of Model Size by Backbone and Precision')
@@ -85,9 +87,9 @@ plt.show()
 # Box plot of mean encoding time across aggregation methods
 plt.figure(figsize=(12, 8))
 sns.boxplot(data=data, x='aggregation', y='mean_encoding_time', hue='precision', palette="pastel")
-plt.title('Distribution of Mean Encoding Time by Aggregation and Precision')
-plt.xlabel('Aggregation Method')
-plt.ylabel('Mean Encoding Time (seconds)')
+plt.title('Feature Encoding Time by Aggregation and Precision', fontsize='16')
+plt.xlabel('Aggregation Method', fontsize='14')
+plt.ylabel('Encoding Time (ms)', fontsize='14')
 plt.legend(title='Precision', loc='upper right')
 plt.show()
 
