@@ -4,9 +4,7 @@ import seaborn as sns
 
 
 data = pd.read_csv("results.csv")
-data['precision'] = data['precision'].replace("fp32_comp", "fp32")
-data['precision'] = data['precision'].replace("fp16_comp", "fp16")
-data['precision'] = data['precision'].replace("int8_comp", "int8")
+
 #data = data[data['backbone'] in ['efficientnet_b0', 'resnet50_conv4']
 #data = data[data["aggregation"] == "gem"]
 
@@ -22,7 +20,7 @@ for i, metric in enumerate(updated_retrieval_metrics):
     ax[i].legend(title='Precision', loc='upper right')
 
 plt.tight_layout()
-plt.show()
+
 
 
 
@@ -44,10 +42,7 @@ ax[1].set_xlabel('Backbone')
 ax[1].legend(title='Precision', loc='upper right')
 
 plt.tight_layout()
-plt.show()
 
-
-plt.show()
 
 
 # Plotting retrieval performance for updated metrics across aggregation methods
@@ -61,7 +56,6 @@ for i, metric in enumerate(updated_retrieval_metrics):
     ax[i].legend(title='Precision', loc='upper right')
 
 plt.tight_layout()
-plt.show()
 
 
 # Scatter plot of mean_encoding_time vs. model_size colored by backbone
@@ -71,7 +65,6 @@ plt.title('Mean Encoding Time vs. Model Size by Backbone')
 plt.xlabel('Mean Encoding Time (seconds)')
 plt.ylabel('Model Size (bytes)')
 plt.legend(title='Backbone', loc='upper right')
-plt.show()
 
 # Box plot of model size across aggregation methods
 plt.figure(figsize=(12, 8))
@@ -80,7 +73,6 @@ plt.title('Distribution of Model Size by Aggregation and Precision')
 plt.xlabel('Aggregation Method')
 plt.ylabel('Model Size (bytes)')
 plt.legend(title='Precision', loc='upper right')
-plt.show()
 
 
 
@@ -91,16 +83,15 @@ plt.title('Feature Encoding Time by Aggregation and Precision', fontsize='16')
 plt.xlabel('Aggregation Method', fontsize='14')
 plt.ylabel('Encoding Time (ms)', fontsize='14')
 plt.legend(title='Precision', loc='upper right')
-plt.show()
 
 heatmap_data = data.pivot_table(values='pitts30k_r@1', index='aggregation', columns='backbone', aggfunc='mean')
 # Plot the heatmap with the 'coolwarm' color palette
 plt.figure(figsize=(10, 6))
 sns.heatmap(heatmap_data, annot=True, cmap="coolwarm", cbar_kws={'label': 'Average pitts30k_r@1 Score'})
-plt.title('Average pitts30k_r@1 Score by Backbone and Aggregation')
+plt.title('Average Pitts30k R@1 Score by Backbone and Aggregation')
 plt.xlabel('Backbone')
 plt.ylabel('Aggregation Method')
-plt.show()
+
 
 # Pivot the data to get the mean scores for each metric based on backbone and aggregation
 pitts30k_data = data.pivot_table(values='pitts30k_r@1', index='aggregation', columns='backbone', aggfunc='mean')
@@ -116,9 +107,9 @@ sns.heatmap(nordland_data, annot=True, cmap="coolwarm", cbar_kws={'label': 'Avg 
 sns.heatmap(st_lucia_data, annot=True, cmap="coolwarm", cbar_kws={'label': 'Avg st_lucia_r@1 Score'}, ax=ax[2])
 
 # Set titles
-ax[0].set_title('pitts30k_r@1 Score by Backbone and Aggregation')
-ax[1].set_title('nordland_r@1 Score by Backbone and Aggregation')
-ax[2].set_title('st_lucia_r@1 Score by Backbone and Aggregation')
+ax[0].set_title('Pitts30k R@1 Score by Backbone and Aggregation')
+ax[1].set_title('Nordland R@1 Score by Backbone and Aggregation')
+ax[2].set_title('St Lucia R@1 Score by Backbone and Aggregation')
 
 plt.tight_layout()
 plt.show()
