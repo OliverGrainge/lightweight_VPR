@@ -14,13 +14,17 @@ fig, ax = plt.subplots(len(updated_retrieval_metrics), 1, figsize=(15, 20))
 
 for i, metric in enumerate(updated_retrieval_metrics):
     sns.boxplot(data=data, x='backbone', y=metric, hue='precision', ax=ax[i], palette="Set2")
-    ax[i].set_title(f'Distribution of {metric} by Backbone and Precision')
-    ax[i].set_ylabel(f'{metric} Score')
-    ax[i].set_xlabel('Backbone')
+    ax[i].set_title(f'Distribution of {metric} by Backbone and Precision', fontsize='18')
+    ax[i].set_ylabel(f'{metric} Score', fontsize='15')
+    ax[i].set_xlabel('Backbone', fontsize='15')
     ax[i].legend(title='Precision', loc='upper right')
 
+<<<<<<< HEAD
 plt.tight_layout()
 
+=======
+#plt.tight_layout()
+>>>>>>> 04894e5 (Adding Results)
 
 
 
@@ -44,6 +48,10 @@ ax[1].legend(title='Precision', loc='upper right')
 plt.tight_layout()
 
 
+<<<<<<< HEAD
+=======
+
+>>>>>>> 04894e5 (Adding Results)
 
 # Plotting retrieval performance for updated metrics across aggregation methods
 fig, ax = plt.subplots(len(updated_retrieval_metrics), 1, figsize=(15, 20))
@@ -73,7 +81,10 @@ plt.title('Distribution of Model Size by Aggregation and Precision')
 plt.xlabel('Aggregation Method')
 plt.ylabel('Model Size (bytes)')
 plt.legend(title='Precision', loc='upper right')
+<<<<<<< HEAD
 
+=======
+>>>>>>> 04894e5 (Adding Results)
 
 
 # Box plot of mean encoding time across aggregation methods
@@ -91,12 +102,16 @@ sns.heatmap(heatmap_data, annot=True, cmap="coolwarm", cbar_kws={'label': 'Avera
 plt.title('Average Pitts30k R@1 Score by Backbone and Aggregation')
 plt.xlabel('Backbone')
 plt.ylabel('Aggregation Method')
+<<<<<<< HEAD
 
+=======
+>>>>>>> 04894e5 (Adding Results)
 
+data = data[data["precision"] == "int8"]
 # Pivot the data to get the mean scores for each metric based on backbone and aggregation
-pitts30k_data = data.pivot_table(values='pitts30k_r@1', index='aggregation', columns='backbone', aggfunc='mean')
-nordland_data = data.pivot_table(values='nordland_r@1', index='aggregation', columns='backbone', aggfunc='mean')
-st_lucia_data = data.pivot_table(values='st_lucia_r@1', index='aggregation', columns='backbone', aggfunc='mean')
+pitts30k_data = data.pivot_table(values='pitts30k_r@1', index='aggregation', columns='backbone', aggfunc='max')
+nordland_data = data.pivot_table(values='nordland_r@1', index='aggregation', columns='backbone', aggfunc='max')
+st_lucia_data = data.pivot_table(values='st_lucia_r@1', index='aggregation', columns='backbone', aggfunc='max')
 
 # Combine the heatmaps into a single figure
 fig, ax = plt.subplots(1, 3, figsize=(20, 6))
@@ -113,4 +128,3 @@ ax[2].set_title('St Lucia R@1 Score by Backbone and Aggregation')
 
 plt.tight_layout()
 plt.show()
-
