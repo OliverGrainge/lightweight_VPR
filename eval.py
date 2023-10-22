@@ -73,11 +73,10 @@ if args.resume is not None:
 else: 
     QAT_FLAG = "PTQ"
 
-print( "stanfastic ================================================", QAT_FLAG)
 
 
 try:
-    result_data = df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG].to_dict()
+    result_data = df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG + "_" + str(args.fc_output_dim)].to_dict()
 except: 
     result_data = {}
 
@@ -117,7 +116,7 @@ elif args.resume is not None:
 if args.fc_output_dim is not None:
     args.features_dim = args.fc_output_dim
 
-result_data["id"] = args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG
+result_data["id"] = args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG + "_" + str(args.fc_output_dim)
 result_data["model_path"] = args.resume
 result_data["fc_output_dim"] = args.fc_output_dim
 result_data["backbone"] = args.backbone 
@@ -181,7 +180,7 @@ print("==================================================================")
 print(result_data)
 logging.info(f"Mean Inference Latency: {lat_mean}, STD Inference Latency: {lat_var}")
 
-df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG] = result_data
+df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG + "_" + str(args.fc_output_dim)] = result_data
 df.to_csv("results.csv")
 
 ############################ LOGGING INFORMATION ##################################################
