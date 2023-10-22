@@ -13,8 +13,10 @@ bb=mobilenetv2conv4
 agg=gem
 fc_output_dim=512
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_512/best_model.pth
-#python eval.py --backbone=resnet101conv4 --aggregation=gem --dataset_name=$dataset --precision=fp32_comp --num_workers=16 --save_dir=resnet101_gem_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=512 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
+fc_output_dim=1024
+resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_1024/best_model.pth
+python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=1024 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
 fc_output_dim=2048
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_2048/best_model.pth
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp16_comp --resume=$resume --fc_output_dim=2048 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
@@ -35,8 +37,10 @@ bb=mobilenetv2conv4
 agg=gem
 fc_output_dim=512
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_512/best_model.pth
-#python eval.py --backbone=resnet101conv4 --aggregation=gem --dataset_name=$dataset --precision=fp32_comp --num_workers=16 --save_dir=resnet101_gem_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=512 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
+fc_output_dim=1024
+resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_1024/best_model.pth
+python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=1024 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
 fc_output_dim=2048
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_2048/best_model.pth
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp16_comp --resume=$resume --fc_output_dim=2048 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
@@ -58,8 +62,10 @@ bb=mobilenetv2conv4
 agg=gem
 fc_output_dim=512
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_512/best_model.pth
-#python eval.py --backbone=resnet101conv4 --aggregation=gem --dataset_name=$dataset --precision=fp32_comp --num_workers=16 --save_dir=resnet101_gem_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=512 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
+fc_output_dim=1024
+resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_1024/best_model.pth
+python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=1024 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
 fc_output_dim=2048
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_gem_2048/best_model.pth
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp16_comp --resume=$resume --fc_output_dim=2048 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
@@ -104,8 +110,10 @@ bb=mobilenetv2conv4
 agg=mac
 fc_output_dim=512
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_512/best_model.pth
-#python eval.py --backbone=resnet101conv4 --aggregation=gem --dataset_name=$dataset --precision=fp32_comp --num_workers=16 --save_dir=resnet101_gem_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=512 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
+fc_output_dim=1024
+resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_1024/best_model.pth
+python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=1024 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
 fc_output_dim=2048
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_2048/best_model.pth
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp16_comp --resume=$resume --fc_output_dim=2048 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
@@ -126,8 +134,10 @@ bb=mobilenetv2conv4
 agg=mac
 fc_output_dim=512
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_512/best_model.pth
-#python eval.py --backbone=resnet101conv4 --aggregation=gem --dataset_name=$dataset --precision=fp32_comp --num_workers=16 --save_dir=resnet101_gem_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=512 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
+fc_output_dim=1024
+resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_1024/best_model.pth
+python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=1024 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
 fc_output_dim=2048
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_2048/best_model.pth
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp16_comp --resume=$resume --fc_output_dim=2048 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
@@ -149,8 +159,10 @@ bb=mobilenetv2conv4
 agg=mac
 fc_output_dim=512
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_512/best_model.pth
-#python eval.py --backbone=resnet101conv4 --aggregation=gem --dataset_name=$dataset --precision=fp32_comp --num_workers=16 --save_dir=resnet101_gem_1024 --QAT=False --train_batch_size=2 --infer_batch_size=1 --mixed_precision_training=True --accrue_gradient=1 --fc_output_dim=1024
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=512 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
+fc_output_dim=1024
+resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_1024/best_model.pth
+python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp32_comp --resume=$resume --fc_output_dim=1024 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
 fc_output_dim=2048
 resume=/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_2048/best_model.pth
 python eval.py --backbone=$bb --aggregation=$agg --dataset_name=$dataset --precision=fp16_comp --resume=$resume --fc_output_dim=2048 --mixed_precision_training=True --infer_batch_size=1 --num_workers=16 --QAT=False
