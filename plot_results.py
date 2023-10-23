@@ -8,7 +8,6 @@ data = pd.read_csv("results.csv")
 #data = data[data['backbone'] in ['efficientnet_b0', 'resnet50_conv4']
 #data = data[data["aggregation"] == "gem"]
 
-
 updated_retrieval_metrics = ['st_lucia_r@1', 'pitts30k_r@1', 'nordland_r@1']
 fig, ax = plt.subplots(len(updated_retrieval_metrics), 1, figsize=(15, 20))
 
@@ -18,13 +17,6 @@ for i, metric in enumerate(updated_retrieval_metrics):
     ax[i].set_ylabel(f'{metric} Score', fontsize='15')
     ax[i].set_xlabel('Backbone', fontsize='15')
     ax[i].legend(title='Precision', loc='upper right')
-
-<<<<<<< HEAD
-plt.tight_layout()
-
-=======
-#plt.tight_layout()
->>>>>>> 04894e5 (Adding Results)
 
 
 
@@ -48,11 +40,6 @@ ax[1].legend(title='Precision', loc='upper right')
 plt.tight_layout()
 
 
-<<<<<<< HEAD
-=======
-
->>>>>>> 04894e5 (Adding Results)
-
 # Plotting retrieval performance for updated metrics across aggregation methods
 fig, ax = plt.subplots(len(updated_retrieval_metrics), 1, figsize=(15, 20))
 
@@ -63,7 +50,6 @@ for i, metric in enumerate(updated_retrieval_metrics):
     ax[i].set_xlabel('Aggregation Method')
     ax[i].legend(title='Precision', loc='upper right')
 
-plt.tight_layout()
 
 
 # Scatter plot of mean_encoding_time vs. model_size colored by backbone
@@ -81,10 +67,7 @@ plt.title('Distribution of Model Size by Aggregation and Precision')
 plt.xlabel('Aggregation Method')
 plt.ylabel('Model Size (bytes)')
 plt.legend(title='Precision', loc='upper right')
-<<<<<<< HEAD
 
-=======
->>>>>>> 04894e5 (Adding Results)
 
 
 # Box plot of mean encoding time across aggregation methods
@@ -102,16 +85,18 @@ sns.heatmap(heatmap_data, annot=True, cmap="coolwarm", cbar_kws={'label': 'Avera
 plt.title('Average Pitts30k R@1 Score by Backbone and Aggregation')
 plt.xlabel('Backbone')
 plt.ylabel('Aggregation Method')
-<<<<<<< HEAD
 
-=======
->>>>>>> 04894e5 (Adding Results)
+#plt.show()
 
-data = data[data["precision"] == "int8"]
+
+data = data[data["precision"] == "int8_comp"]
+print(data.keys())
 # Pivot the data to get the mean scores for each metric based on backbone and aggregation
 pitts30k_data = data.pivot_table(values='pitts30k_r@1', index='aggregation', columns='backbone', aggfunc='max')
 nordland_data = data.pivot_table(values='nordland_r@1', index='aggregation', columns='backbone', aggfunc='max')
 st_lucia_data = data.pivot_table(values='st_lucia_r@1', index='aggregation', columns='backbone', aggfunc='max')
+
+
 
 # Combine the heatmaps into a single figure
 fig, ax = plt.subplots(1, 3, figsize=(20, 6))
@@ -127,4 +112,23 @@ ax[1].set_title('Nordland R@1 Score by Backbone and Aggregation')
 ax[2].set_title('St Lucia R@1 Score by Backbone and Aggregation')
 
 plt.tight_layout()
+#plt.show()
+
+
+filtered_data = data[data['backbone'] == 'mobilenetv2conv4']
+# Filter the data further to only include rows with the "GEM" aggregation type
+gem_filtered_data = filtered_data[filtered_data['aggregation'] == 'gem']
+#print(gem_filtered_data.keys())
+#gem_filtered_data["backbone", "aggregation", "descriptor_size", "precision"]
+print(gem_filtered_data)
+
+# Plotting
+plt.figure(figsize=(10, 6))
+plt.scatter(gem_filtered_data['descriptor_size'], gem_filtered_data['pitts30k_r@1'], color='blue', alpha=0.7)
+plt.title('Influence of Descriptor Size on Pitts30k R@1 Performance (GEM Aggregation)')
+plt.xlabel('Descriptor Size')
+plt.ylabel('Pitts30k R@1 (%)')
+plt.grid(True)
+plt.tight_layout()
+
 plt.show()
