@@ -73,8 +73,6 @@ if args.resume is not None:
 else: 
     QAT_FLAG = "PTQ"
 
-
-
 try:
     result_data = df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG + "_" + str(args.fc_output_dim)].to_dict()
 except: 
@@ -82,7 +80,6 @@ except:
 
 ######################################### MODEL #########################################
 model = network.GeoLocalizationNet(args).cuda().eval()
-#model = model.to(args.device)
 
 if args.aggregation in ["netvlad", "crn"]:
     args.features_dim *= args.netvlad_clusters
@@ -141,9 +138,6 @@ from torch.utils.data.dataset import Subset
 calibration_dataset = Subset(test_ds, list(range(test_ds.database_num, test_ds.database_num+test_ds.queries_num)))
 model = quantize_model(model, precision=args.precision, calibration_dataset=calibration_dataset, args=args)
 
-"""
-model = torch.nn.DataParallel(model)
-"""
 
 if args.pca_dim is None:
     pca = None
