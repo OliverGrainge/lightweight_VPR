@@ -38,32 +38,40 @@ class GeoLocalizationNet(nn.Module):
 
         if args.aggregation in ["gem", "spoc", "mac", "rmac"]:
             if args.l2 == "before_pool":
-                self.aggregation = nn.Sequential(L2Norm(), self.aggregation, nn.Flatten())
+                self.aggregation = nn.Sequential(
+                    L2Norm(), self.aggregation, nn.Flatten()
+                )
             elif args.l2 == "after_pool":
-                self.aggregation = nn.Sequential(self.aggregation, L2Norm(), nn.Flatten())
+                self.aggregation = nn.Sequential(
+                    self.aggregation, L2Norm(), nn.Flatten()
+                )
             elif args.l2 == "none":
                 self.aggregation = nn.Sequential(self.aggregation, nn.Flatten())
 
         if args.fc_output_dim != None and args.aggregation != "netvlad":
-            #Concatenate fully connected layer to the aggregation layer
-            self.aggregation = nn.Sequential(self.aggregation,
-                                             nn.Linear(args.features_dim, args.fc_output_dim),
-                                             L2Norm())
+            # Concatenate fully connected layer to the aggregation layer
+            self.aggregation = nn.Sequential(
+                self.aggregation,
+                nn.Linear(args.features_dim, args.fc_output_dim),
+                L2Norm(),
+            )
             args.features_dim = args.fc_output_dim
 
         if args.fc_output_dim != None and args.aggregation == "netvlad":
-                        self.aggregation = nn.Sequential(self.aggregation,
-                                             nn.Linear(self.aggregation.clusters_num * self.aggregation.dim, args.fc_output_dim),
-                                             L2Norm())
-            #args.features_dim = args.fc_output_dim
-
-        
+            self.aggregation = nn.Sequential(
+                self.aggregation,
+                nn.Linear(
+                    self.aggregation.clusters_num * self.aggregation.dim,
+                    args.fc_output_dim,
+                ),
+                L2Norm(),
+            )
+        # args.features_dim = args.fc_output_dim
 
     def forward(self, x):
         x = self.backbone(x)
         x = self.aggregation(x)
         return x
-
 
 
 def get_aggregation(args):
@@ -129,7 +137,7 @@ class ShuffleNetV2Features(nn.Module):
         self.stage2 = original_model.stage2
         self.stage3 = original_model.stage3
         self.stage4 = original_model.stage4
-    
+
     def forward(self, x):
         x = self.features(x)
         x = self.maxpool(x)
@@ -154,32 +162,32 @@ def get_backbone(args):
         args.features_dim = get_output_channels_dim(backbone)
         return backbone
     if args.backbone == "shufflenetv2":
-        shufflenet_v2 = models.shufflenet_v2_x1_0(pretrained=True)  
+        shufflenet_v2 = models.shufflenet_v2_x1_0(pretrained=True)
         backbone = ShuffleNetV2Features(shufflenet_v2)
         args.features_dim = get_output_channels_dim(backbone)
         return backbone
     if args.backbone.startswith("efficientnet"):
         if args.backbone.endswith("b0"):
-            model = timm.create_model('efficientnet_b0', pretrained=True)
+            model = timm.create_model("efficientnet_b0", pretrained=True)
             backbone = nn.Sequential(*list(model.children())[:-3])
         elif args.backbone.endswith("b1"):
-            model = timm.create_model('efficientnet_b1', pretrained=True)
+            model = timm.create_model("efficientnet_b1", pretrained=True)
             backbone = nn.Sequential(*list(model.children())[:-3])
         elif args.backbone.endswith("b2"):
-            model = timm.create_model('efficientnet_b2', pretrained=True)
+            model = timm.create_model("efficientnet_b2", pretrained=True)
             backbone = nn.Sequential(*list(model.children())[:-3])
         elif args.backbone.endswith("b3"):
-            model = timm.create_model('efficientnet_b3', pretrained=True)
+            model = timm.create_model("efficientnet_b3", pretrained=True)
             backbone = nn.Sequential(*list(model.children())[:-3])
         elif args.backbone.endswith("b4"):
-            model = timm.create_model('efficientnet_b4', pretrained=True)
+            model = timm.create_model("efficientnet_b4", pretrained=True)
             backbone = nn.Sequential(*list(model.children())[:-3])
         elif args.backbone.endswith("b5"):
-            model = timm.create_model('efficientnet_b5', pretrained=True)
+            model = timm.create_model("efficientnet_b5", pretrained=True)
             backbone = nn.Sequential(*list(model.children())[:-3])
         args.features_dim = get_output_channels_dim(backbone)
         return backbone
-    
+
     if args.backbone.startswith("squeezenet"):
         model = models.squeezenet1_0(pretrained=True)
         backbone = nn.Sequential(*list(model.children())[:-1])
@@ -283,6 +291,7 @@ def get_backbone(args):
         backbone
     )  # Dinamically obtain number of channels in output
     return backbone
+
 
 class VitWrapper(nn.Module):
     def __init__(self, vit_model, aggregation):

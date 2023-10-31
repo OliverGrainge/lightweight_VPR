@@ -1,4 +1,3 @@
-
 """
 With this script you can evaluate checkpoints or test models from two popular
 landmark retrieval github repos.
@@ -19,47 +18,49 @@ results in VG)
 """
 
 import os
-os.environ['CUDA_MODULE_LOADING'] = 'LAZY'
+
+os.environ["CUDA_MODULE_LOADING"] = "LAZY"
 
 
-import sys
-import torch
-import parser
 import logging
-import sklearn
-from torch import nn
-import torch_tensorrt 
-from torch.cuda.amp import autocast
-from os.path import join
-from datetime import datetime
-from torch.utils.model_zoo import load_url
-from google_drive_downloader import GoogleDriveDownloader as gdd
-from util import count_parameters, quantize_model, measure_memory
-
+import parser
+import sys
 import test
+from datetime import datetime
+from os.path import join
+
 import pandas as pd
-import util
+import sklearn
+import torch
+import torch_tensorrt
+from google_drive_downloader import GoogleDriveDownloader as gdd
+from torch import nn
+from torch.cuda.amp import autocast
+from torch.utils.model_zoo import load_url
+
 import commons
 import datasets_ws
+import util
 from model import network
-from util import benchmark_latency
+from util import (benchmark_latency, count_parameters, measure_memory,
+                  quantize_model)
 
 OFF_THE_SHELF_RADENOVIC = {
-    'resnet50conv5_sfm'    : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/rSfM120k-tl-resnet50-gem-w-97bf910.pth',
-    'resnet101conv5_sfm'   : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/rSfM120k-tl-resnet101-gem-w-a155e54.pth',
-    'resnet50conv5_gldv1'  : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/gl18/gl18-tl-resnet50-gem-w-83fdc30.pth',
-    'resnet101conv5_gldv1' : 'http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/gl18/gl18-tl-resnet101-gem-w-a4d43db.pth',
+    "resnet50conv5_sfm": "http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/rSfM120k-tl-resnet50-gem-w-97bf910.pth",
+    "resnet101conv5_sfm": "http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/rSfM120k-tl-resnet101-gem-w-a155e54.pth",
+    "resnet50conv5_gldv1": "http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/gl18/gl18-tl-resnet50-gem-w-83fdc30.pth",
+    "resnet101conv5_gldv1": "http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/gl18/gl18-tl-resnet101-gem-w-a4d43db.pth",
 }
 
 OFF_THE_SHELF_NAVER = {
-    "resnet50conv5"  : "1oPtE_go9tnsiDLkWjN4NMpKjh-_md1G5",
-    'resnet101conv5' : "1UWJGDuHtzaQdFhSMojoYVQjmCXhIwVvy"
+    "resnet50conv5": "1oPtE_go9tnsiDLkWjN4NMpKjh-_md1G5",
+    "resnet101conv5": "1UWJGDuHtzaQdFhSMojoYVQjmCXhIwVvy",
 }
 
 ######################################### SETUP #########################################
 args = parser.parse_arguments()
 start_time = datetime.now()
-args.save_dir = join("test", args.save_dir, start_time.strftime('%Y-%m-%d_%H-%M-%S'))
+args.save_dir = join("test", args.save_dir, start_time.strftime("%Y-%m-%d_%H-%M-%S"))
 commons.setup_logging(args.save_dir)
 commons.make_deterministic(args.seed)
 logging.info(f"Arguments: {args}")
@@ -70,12 +71,22 @@ if args.resume is not None:
     QAT_FLAG = "PTQ"
     if "int8" in args.resume or "fp16" in args.resume:
         QAT_FLAG = "QAT"
-else: 
+else:
     QAT_FLAG = "PTQ"
 
 try:
-    result_data = df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG + "_" + str(args.fc_output_dim)].to_dict()
-except: 
+    result_data = df.loc[
+        args.backbone
+        + "_"
+        + args.aggregation
+        + "_"
+        + args.precision
+        + "_"
+        + QAT_FLAG
+        + "_"
+        + str(args.fc_output_dim)
+    ].to_dict()
+except:
     result_data = {}
 
 ######################################### MODEL #########################################
@@ -86,16 +97,21 @@ if args.aggregation in ["netvlad", "crn"]:
 
 if args.off_the_shelf.startswith("radenovic") or args.off_the_shelf.startswith("naver"):
     if args.off_the_shelf.startswith("radenovic"):
-        pretrain_dataset_name = args.off_the_shelf.split("_")[1]  # sfm or gldv1 datasets
+        pretrain_dataset_name = args.off_the_shelf.split("_")[
+            1
+        ]  # sfm or gldv1 datasets
         url = OFF_THE_SHELF_RADENOVIC[f"{args.backbone}_{pretrain_dataset_name}"]
         state_dict = load_url(url, model_dir=join("data", "off_the_shelf_nets"))
     else:
         # This is a hacky workaround to maintain compatibility
-        sys.modules['sklearn.decomposition.pca'] = sklearn.decomposition._pca
+        sys.modules["sklearn.decomposition.pca"] = sklearn.decomposition._pca
         zip_file_path = join("data", "off_the_shelf_nets", args.backbone + "_naver.zip")
         if not os.path.exists(zip_file_path):
-            gdd.download_file_from_google_drive(file_id=OFF_THE_SHELF_NAVER[args.backbone],
-                                                dest_path=zip_file_path, unzip=True)
+            gdd.download_file_from_google_drive(
+                file_id=OFF_THE_SHELF_NAVER[args.backbone],
+                dest_path=zip_file_path,
+                unzip=True,
+            )
         if args.backbone == "resnet50conv5":
             state_dict_filename = "Resnet50-AP-GeM.pt"
         elif args.backbone == "resnet101conv5":
@@ -113,10 +129,20 @@ elif args.resume is not None:
 if args.fc_output_dim is not None:
     args.features_dim = args.fc_output_dim
 
-result_data["id"] = args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG + "_" + str(args.fc_output_dim)
+result_data["id"] = (
+    args.backbone
+    + "_"
+    + args.aggregation
+    + "_"
+    + args.precision
+    + "_"
+    + QAT_FLAG
+    + "_"
+    + str(args.fc_output_dim)
+) 
 result_data["model_path"] = args.resume
 result_data["fc_output_dim"] = args.fc_output_dim
-result_data["backbone"] = args.backbone 
+result_data["backbone"] = args.backbone
 result_data["aggregation"] = args.aggregation
 result_data["precision"] = args.precision
 
@@ -135,8 +161,13 @@ logging.info(f"number of model parameters: {n_params}")
 from torch.utils.data import DataLoader
 from torch.utils.data.dataset import Subset
 
-calibration_dataset = Subset(test_ds, list(range(test_ds.database_num, test_ds.database_num+test_ds.queries_num)))
-model = quantize_model(model, precision=args.precision, calibration_dataset=calibration_dataset, args=args)
+calibration_dataset = Subset(
+    test_ds,
+    list(range(test_ds.database_num, test_ds.database_num + test_ds.queries_num)),
+)
+model = quantize_model(
+    model, precision=args.precision, calibration_dataset=calibration_dataset, args=args
+)
 
 
 if args.pca_dim is None:
@@ -148,13 +179,17 @@ else:
 
 
 ######################################## Measure Memory footprint ##########################
-model_size = measure_memory(model, input_size=(args.infer_batch_size, 3, 480, 640), args=args)
+model_size = measure_memory(
+    model, input_size=(args.infer_batch_size, 3, 480, 640), args=args
+)
 result_data["model_size"] = model_size
 logging.info(f"Model size is {model_size} bytes")
 
 
 ######################################### TEST on TEST SET #################################
-recalls, retrieval_time, feature_bytes, recalls_str = test.test(args, test_ds, model, args.test_method, pca)
+recalls, retrieval_time, feature_bytes, recalls_str = test.test(
+    args, test_ds, model, args.test_method, pca
+)
 result_data[args.dataset_name + "_r@1"] = recalls[0]
 result_data["descriptor_size"] = feature_bytes
 result_data[args.dataset_name + "_r@5"] = recalls[1]
@@ -166,7 +201,12 @@ logging.info(f"Recalls on {test_ds}: {recalls_str}")
 
 ######################################## Test Latency ######################################
 torch.cuda.empty_cache()
-lat_mean, lat_var = benchmark_latency(model, input_size=(3, 480, 640), batch_size=args.infer_batch_size, precision=args.precision)
+lat_mean, lat_var = benchmark_latency(
+    model,
+    input_size=(3, 480, 640),
+    batch_size=args.infer_batch_size,
+    precision=args.precision,
+)
 result_data["mean_encoding_time"] = lat_mean
 result_data["std_encoding_time"] = lat_var
 result_data["retrieval_time"] = retrieval_time
@@ -174,7 +214,17 @@ print("==================================================================")
 print(result_data)
 logging.info(f"Mean Inference Latency: {lat_mean}, STD Inference Latency: {lat_var}")
 
-df.loc[args.backbone + "_" + args.aggregation + "_" + args.precision + "_" + QAT_FLAG + "_" + str(args.fc_output_dim)] = result_data
+df.loc[
+    args.backbone
+    + "_"
+    + args.aggregation
+    + "_"
+    + args.precision
+    + "_"
+    + QAT_FLAG
+    + "_"
+    + str(args.fc_output_dim)
+] = result_data
 df.to_csv("results.csv")
 
 ############################ LOGGING INFORMATION ##################################################

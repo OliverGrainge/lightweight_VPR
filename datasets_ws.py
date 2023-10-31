@@ -1,19 +1,18 @@
-import os
-import torch
-import faiss
 import logging
-import numpy as np
+import os
 from glob import glob
-from tqdm import tqdm
-from PIL import Image
 from os.path import join
+
+import faiss
+import numpy as np
+import torch
 import torch.utils.data as data
 import torchvision.transforms as T
-from torch.utils.data.dataset import Subset
+from PIL import Image
 from sklearn.neighbors import NearestNeighbors
 from torch.utils.data.dataloader import DataLoader
-import logging
-
+from torch.utils.data.dataset import Subset
+from tqdm import tqdm
 
 base_transform = T.Compose(
     [
@@ -93,7 +92,7 @@ class BaseDataset(data.Dataset):
         #### Read paths and UTM coordinates for all images.
         database_folder = join(self.dataset_folder, "database")
         queries_folder = join(self.dataset_folder, "queries")
-        
+
         if not os.path.exists(database_folder):
             raise FileNotFoundError(f"Folder {database_folder} does not exist")
         if not os.path.exists(queries_folder):
@@ -243,7 +242,7 @@ class TripletsDataset(BaseDataset):
                 T.RandomRotation(degrees=args.random_rotation),
                 self.resized_transform,
             ]
-        )   
+        )
         logging.debug("finindg nearest neighbors")
 
         # Find hard_positives_per_query, which are within train_positives_dist_threshold (10 meters)

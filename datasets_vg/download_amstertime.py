@@ -12,12 +12,12 @@ same position, and consecutive pairs being 100 meters away from each other.
 import os
 import shutil
 from glob import glob
-from tqdm import tqdm
-from PIL import Image
 from os.path import join
 
-import util
+from PIL import Image
+from tqdm import tqdm
 
+import util
 
 datasets_folder = join(os.curdir, "datasets")
 dataset_name = "amstertime"
@@ -30,8 +30,9 @@ os.makedirs(database_folder, exist_ok=True)
 os.makedirs(queries_folder, exist_ok=True)
 os.makedirs(raw_data_folder, exist_ok=True)
 
-util.download_heavy_file("https://data.4tu.nl/ndownloader/files/34793920",
-                         join(raw_data_folder, "data.zip"))
+util.download_heavy_file(
+    "https://data.4tu.nl/ndownloader/files/34793920", join(raw_data_folder, "data.zip")
+)
 
 shutil.unpack_archive(join(raw_data_folder, "data.zip"), raw_data_folder)
 
@@ -50,6 +51,7 @@ for db_filepath, q_filepath in zip(tqdm(database_paths, ncols=100), queries_path
     new_q_path = os.path.join(queries_folder, new_image_name)  # queries are in JPEG
     _ = shutil.move(q_filepath, new_q_path)
     new_db_path = os.path.join(database_folder, new_image_name)
-    Image.open(db_filepath).convert("RGB").save(new_db_path)  # db images are in PNG, so convert to JPEG
+    Image.open(db_filepath).convert("RGB").save(
+        new_db_path
+    )  # db images are in PNG, so convert to JPEG
     os.remove(db_filepath)
-

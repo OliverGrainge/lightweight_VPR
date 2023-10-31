@@ -13,8 +13,6 @@ import model.functional as LF
 import model.normalization as normalization
 
 
-
-
 class MAC(nn.Module):
     def __init__(self):
         super().__init__()
@@ -38,15 +36,15 @@ class SPoC(nn.Module):
 
 
 class GeM(nn.Module):
-    def __init__(self, p: float=3.0, eps: float=1e-6):
+    def __init__(self, p: float = 3.0, eps: float = 1e-6):
         super().__init__()
         self.p = Parameter(torch.ones(1) * p)
         self.eps = eps
 
     def forward(self, x):
-        return F.avg_pool2d(x.clamp(min=self.eps).pow(self.p), (x.size(-2), x.size(-1))).pow(
-        1.0 / self.p
-        )
+        return F.avg_pool2d(
+            x.clamp(min=self.eps).pow(self.p), (x.size(-2), x.size(-1))
+        ).pow(1.0 / self.p)
 
     def __repr__(self):
         return (
@@ -66,11 +64,13 @@ class RMAC(nn.Module):
         super().__init__()
         self.L = L
         self.eps = eps
-        self.steps = torch.Tensor([2, 3, 4, 5, 6, 7])  # possible regions for the long dimension
+        self.steps = torch.Tensor(
+            [2, 3, 4, 5, 6, 7]
+        )  # possible regions for the long dimension
 
     def forward(self, x):
         ovr = 0.4  # desired overlap of neighboring regions
-        
+
         W = x.size(3)
         H = x.size(2)
         w = min(W, H)
@@ -92,14 +92,14 @@ class RMAC(nn.Module):
             wl = math.floor(2 * w / (l + 1))
             wl2 = math.floor(wl / 2 - 1)
             if l + Wd == 1:
-                b = 0.
+                b = 0.0
             else:
                 b = (W - wl) / (l + Wd - 1)
             cenW = (
                 torch.floor(wl2 + torch.Tensor(range(l - 1 + Wd + 1)) * b) - wl2
             )  # center coordinates
             if l + Hd == 1:
-                b = 0.
+                b = 0.0
             else:
                 b = (H - wl) / (l + Hd - 1)
             cenH = (
@@ -112,10 +112,12 @@ class RMAC(nn.Module):
                     R = x[:, :, (int(i_) + torch.Tensor(range(wl)).long()).tolist(), :]
                     R = R[:, :, :, (int(j_) + torch.Tensor(range(wl)).long()).tolist()]
                     vt = F.max_pool2d(R, (R.size(-2), R.size(-1)))
-                    vt = vt / (torch.norm(vt, p=2, dim=1, keepdim=True) + self.eps).expand_as(vt)
+                    vt = vt / (
+                        torch.norm(vt, p=2, dim=1, keepdim=True) + self.eps
+                    ).expand_as(vt)
                     v += vt
         return v
-    
+
     def __repr__(self):
         return self.__class__.__name__ + "(" + "L=" + "{}".format(self.L) + ")"
 
@@ -125,7 +127,7 @@ class Flatten(torch.nn.Module):
         super().__init__()
 
     def forward(self, x):
-        #assert x.shape[2] == x.shape[3] == 1
+        # assert x.shape[2] == x.shape[3] == 1
         return x[:, :, 0, 0]
 
 
@@ -155,6 +157,7 @@ class RRM(nn.Module):
         out += identity
         out = self.l2(self.ln2(out))
         return out
+
 
 class NetVLAD(nn.Module):
     """NetVLAD layer implementation"""
@@ -189,11 +192,8 @@ class NetVLAD(nn.Module):
         self.alpha = (-np.log(0.01) / np.mean(dots[0, :] - dots[1, :])).item()
         self.centroids = nn.Parameter(torch.from_numpy(centroids))
         self.conv.weight = nn.Parameter(
-            torch.from_numpy(self.alpha * centroids_assign)
-            .unsqueeze(2)
-            .unsqueeze(3)
+            torch.from_numpy(self.alpha * centroids_assign).unsqueeze(2).unsqueeze(3)
         )
-
 
     def initialize_netvlad_layer(self, args, cluster_ds, backbone):
         descriptors_num = 50000
@@ -245,24 +245,24 @@ class NetVLAD(nn.Module):
         if args.fc_output_dim is not None:
             args.features_dim = args.fc_output_dim
 
-  
     def forward(self, x):
         N, D, H, W = x.shape[:]
         x = F.normalize(x, p=2.0, dim=1)  # Across descriptor dim
         x_flatten = x.view(N, D, -1)
         soft_assign = self.conv(x).view(N, self.clusters_num, -1)
         soft_assign = F.softmax(soft_assign, dim=1)
-        
+
         # Compute residuals for all clusters simultaneously
         residual = x_flatten.unsqueeze(1) - self.centroids.unsqueeze(0).unsqueeze(-1)
         residual *= soft_assign.unsqueeze(2)
-        
+
         vlad = residual.sum(dim=-1)
         vlad = F.normalize(vlad, p=2.0, dim=2)  # intra-normalization
         vlad = vlad.view(N, -1)  # Flatten
         vlad = F.normalize(vlad, p=2.0, dim=1)  # L2 normalize
-        
+
         return vlad
+
 
 # based on https://github.com/lyakaap/NetVLAD-pytorch/blob/master/netvlad.py
 class OrigNetVLAD(nn.Module):
@@ -387,7 +387,6 @@ class OrigNetVLAD(nn.Module):
 
         if args.fc_output_dim is not None:
             args.features_dim = args.fc_output_dim
-
 
 
 class CRNModule(nn.Module):

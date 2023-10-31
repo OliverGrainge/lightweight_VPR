@@ -1,6 +1,7 @@
-import os
-import torch
 import argparse
+import os
+
+import torch
 
 
 def parse_arguments():
@@ -132,7 +133,7 @@ def parse_arguments():
             "shufflenetv2",
             "cct384",
             "vit",
-            "squeezenet"
+            "squeezenet",
         ],
         help="_",
     )
@@ -214,7 +215,7 @@ def parse_arguments():
         "--resize",
         type=int,
         default=[480, 640],
-        #default=[240, 320],
+        # default=[240, 320],
         nargs=2,
         help="Resizing shape for images (HxW).",
     )

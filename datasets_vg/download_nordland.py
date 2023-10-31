@@ -13,10 +13,11 @@ and set UTM_north to be 2.4 meters apart between consecutive frames.
 
 import os
 import shutil
-from tqdm import tqdm
 from glob import glob
-from PIL import Image
 from os.path import join
+
+from PIL import Image
+from tqdm import tqdm
 
 import util
 
@@ -35,12 +36,18 @@ os.makedirs(database_folder, exist_ok=True)
 os.makedirs(queries_folder, exist_ok=True)
 os.makedirs(raw_data_folder, exist_ok=True)
 
-util.download_heavy_file("https://cloudstor.aarnet.edu.au/plus/s/8L7loyTZjK0FsWT/download?path=%2F&files=summer.tar.gz",
-                          join(raw_data_folder, "summer.tar.gz"))
-util.download_heavy_file("https://cloudstor.aarnet.edu.au/plus/s/8L7loyTZjK0FsWT/download?path=%2F&files=winter.tar.gz",
-                          join(raw_data_folder, "winter.tar.gz"))
-util.download_heavy_file("https://cloudstor.aarnet.edu.au/plus/s/8L7loyTZjK0FsWT/download?path=%2F&files=cleanImageNames.txt&downloadStartSecret=crd03ou9qji",
-                          join(raw_data_folder, "cleanImageNames.txt"))
+util.download_heavy_file(
+    "https://cloudstor.aarnet.edu.au/plus/s/8L7loyTZjK0FsWT/download?path=%2F&files=summer.tar.gz",
+    join(raw_data_folder, "summer.tar.gz"),
+)
+util.download_heavy_file(
+    "https://cloudstor.aarnet.edu.au/plus/s/8L7loyTZjK0FsWT/download?path=%2F&files=winter.tar.gz",
+    join(raw_data_folder, "winter.tar.gz"),
+)
+util.download_heavy_file(
+    "https://cloudstor.aarnet.edu.au/plus/s/8L7loyTZjK0FsWT/download?path=%2F&files=cleanImageNames.txt&downloadStartSecret=crd03ou9qji",
+    join(raw_data_folder, "cleanImageNames.txt"),
+)
 
 shutil.unpack_archive(join(raw_data_folder, "summer.tar.gz"), raw_data_folder)
 shutil.unpack_archive(join(raw_data_folder, "winter.tar.gz"), raw_data_folder)
@@ -57,7 +64,7 @@ num_image = 0
 for path in tqdm(database_paths, ncols=100):
     if os.path.basename(path) not in selected_images:
         continue
-    utm_north = util.format_coord(num_image*DISTANCE_BETWEEN_FRAMES, 5, 1)
+    utm_north = util.format_coord(num_image * DISTANCE_BETWEEN_FRAMES, 5, 1)
     filename = f"@0@{utm_north}@@@@@{num_image}@@@@@@@@.jpg"
     new_path = join(database_folder, filename)
     Image.open(path).save(new_path)
@@ -67,9 +74,8 @@ num_image = 0
 for path in tqdm(queries_paths, ncols=100):
     if os.path.basename(path) not in selected_images:
         continue
-    utm_north = util.format_coord(num_image*DISTANCE_BETWEEN_FRAMES, 5, 1)
+    utm_north = util.format_coord(num_image * DISTANCE_BETWEEN_FRAMES, 5, 1)
     filename = f"@0@{utm_north}@@@@@{num_image}@@@@@@@@.jpg"
     new_path = join(queries_folder, filename)
     Image.open(path).save(new_path)
     num_image += 1
-

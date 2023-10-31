@@ -41,17 +41,18 @@ format it.
 
 import os
 import re
-import utm
 import shutil
-import torchvision
 from glob import glob
-from tqdm import tqdm
-from PIL import Image
 from os.path import join
+
+import map_builder
+import torchvision
+import utm
+from PIL import Image
 from scipy.io import loadmat
+from tqdm import tqdm
 
 import util
-import map_builder
 
 datasets_folder = join(os.curdir, "datasets")
 dataset_name = "tokyo247"
@@ -62,24 +63,28 @@ os.makedirs(raw_data_folder, exist_ok=True)
 os.makedirs(join(raw_data_folder, "tokyo247"), exist_ok=True)
 
 #### Database
-matlab_struct_file_path = join(dataset_folder, 'raw_data', 'datasets', 'tokyo247.mat')
+matlab_struct_file_path = join(dataset_folder, "raw_data", "datasets", "tokyo247.mat")
 
 mat_struct = loadmat(matlab_struct_file_path)["dbStruct"].item()
-db_images = [join('tokyo247', f[0].item().replace('.jpg', '.png')) for f in mat_struct[1]]
+db_images = [
+    join("tokyo247", f[0].item().replace(".jpg", ".png")) for f in mat_struct[1]
+]
 
 db_utms = mat_struct[2].T
-dst_folder = join(dataset_folder, 'images', 'test', 'database')
+dst_folder = join(dataset_folder, "images", "test", "database")
 
 os.makedirs(dst_folder, exist_ok=True)
-for src_image_path, (utm_east, utm_north) in zip(tqdm(db_images, desc=f"Copy to {dst_folder}", ncols=100),
-                                                 db_utms):
+for src_image_path, (utm_east, utm_north) in zip(
+    tqdm(db_images, desc=f"Copy to {dst_folder}", ncols=100), db_utms
+):
     src_image_name = os.path.basename(src_image_path)
-    latitude, longitude = utm.to_latlon(utm_east, utm_north, 54, 'S')
+    latitude, longitude = utm.to_latlon(utm_east, utm_north, 54, "S")
     pano_id = src_image_name[:22]
-    tile_num = int(re.findall('_012_(\d+)\.png', src_image_name)[0])//30
+    tile_num = int(re.findall("_012_(\d+)\.png", src_image_name)[0]) // 30
     assert 0 <= tile_num < 12
-    dst_image_name = util.get_dst_image_name(latitude, longitude, pano_id=pano_id,
-                                             tile_num=tile_num)
+    dst_image_name = util.get_dst_image_name(
+        latitude, longitude, pano_id=pano_id, tile_num=tile_num
+    )
     src_image_path = f"{dataset_folder}/raw_data/{src_image_path}"
     try:
         Image.open(src_image_path).save(f"{dst_folder}/{dst_image_name}")
@@ -96,7 +101,9 @@ shutil.unpack_archive(file_zip_path, join(raw_data_folder, "tokyo247"))
 src_queries_folder = file_zip_path.replace(".zip", "")
 src_queries_paths = sorted(glob(join(src_queries_folder, "*.jpg")))
 os.makedirs(join(dataset_folder, "images", "test", "queries"), exist_ok=True)
-for src_query_path in tqdm(src_queries_paths, desc=f"Copy to {dataset_folder}/images/test/queries", ncols=100):
+for src_query_path in tqdm(
+    src_queries_paths, desc=f"Copy to {dataset_folder}/images/test/queries", ncols=100
+):
     csv_path = src_query_path.replace(".jpg", ".csv")
     with open(csv_path, "r") as file:
         info = file.readline()
@@ -114,4 +121,3 @@ for src_query_path in tqdm(src_queries_paths, desc=f"Copy to {dataset_folder}/im
 
 map_builder.build_map_from_dataset(dataset_folder)
 shutil.rmtree(raw_data_folder)
-

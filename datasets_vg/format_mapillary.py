@@ -1,8 +1,9 @@
 import os
 import shutil
 from glob import glob
-from tqdm import tqdm
 from os.path import join
+
+from tqdm import tqdm
 
 import util
 
