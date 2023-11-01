@@ -447,7 +447,7 @@ def benchmark_latency(
     input=None,
     input_size=(3, 480, 640),
     batch_size=1,
-    repetitions=100,
+    repetitions=500,
     precision="fp32",
 ):
     logging.debug("Testing Model Latency")
