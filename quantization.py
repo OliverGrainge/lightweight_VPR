@@ -17,6 +17,9 @@ args.resume = "/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobile
 
 model = network.GeoLocalizationNet(args).eval()
 
+RANGE = [-20, 20]
+BINS = 500
+
 
 def flatten_module_recursive(module):
     layers = []
@@ -35,17 +38,18 @@ def minmax_scaler(tensor, nbits):
     qmax = 2.**nbits - 1.
     min_val, max_val = tensor.min(), tensor.max()
     scale = (max_val - min_val) / (qmax - qmin)
-    return scale, qmin, qmax
-    
+    return scale, min_val, qmin, qmax
 
-def qconv_perfilter(layer, nbits=8):
+def qconv_perfilter(layer, nbits=8, calibration_data=None):
     tensor = layer.weight.data
     scales = []
     q_tensors = []
 
     for channel in range(tensor.size(0)):
-        min_val, max_val = tensor[channel].min(), tensor[channel].max()
-        scale, qmin, qmax = minmax_scaler(tensor[channel], nbits=nbits)
+        if calibration_data == None:
+            scale, min_val, qmin, qmax = minmax_scaler(tensor[channel], nbits=nbits)
+        else: 
+            raise NotImplementedError
         scales.append(scale)
         q_tensor = (tensor[channel] / scale + 0.5).clamp(qmin, qmax).round()
         q_tensor = q_tensor * scale + min_val
@@ -54,7 +58,7 @@ def qconv_perfilter(layer, nbits=8):
     layer.weight.data = torch.stack(q_tensors)
     return layer
 
-def qconv_perchannel(layer, nbits=8):
+def qconv_perchannel(layer, nbits=8, calibration_data=None):
     tensor = layer.weight.data
     qmin = 0.
     qmax = 2.**nbits - 1.
@@ -66,9 +70,11 @@ def qconv_perchannel(layer, nbits=8):
     # Loop through each reshaped input channel
     for i in range(reshaped_tensor.size(0)):
         channel_weights = reshaped_tensor[i]
-        min_val, max_val = channel_weights.min(), channel_weights.max()
-        scale = (max_val - min_val) / (qmax - qmin)
-        
+        if calibration_data == None:
+            scale, min_val, qmin, qmax = minmax_scaler(channel_weights, nbits=nbits)
+        else: 
+            raise NotImplementedError
+
         q_channel = (channel_weights / scale + 0.5).clamp(qmin, qmax).round()
         q_channel = q_channel * scale + min_val
         q_channels.append(q_channel)
@@ -78,46 +84,57 @@ def qconv_perchannel(layer, nbits=8):
     layer.weight.data = q_channels
     return layer
 
-def qconv_pertensor(layer, nbits=8):
+def qconv_pertensor(layer, nbits=8, calibration_data=None):
     tensor = layer.weight.data
     qmin = 0.
     qmax = 2.**nbits - 1.
-    
-    min_val, max_val = tensor.min(), tensor.max()
+    if calibration_data == None:
+        scale, min_val, qmin, qmax = minmax_scaler(tensor, nbits=nbits)
+    else: 
+        raise NotImplementedError
 
-    scale = (max_val - min_val) / (qmax - qmin)
+    if calibration_data == None:
+        scale, min_val, qmin, qmax = minmax_scaler(tensor, nbits=nbits)
     q_tensor = (tensor / scale + 0.5).clamp(qmin, qmax).round()
     q_tensor = q_tensor * scale + min_val
     layer.weight.data = q_tensor
     return layer
 
 
-def qlin_pertensor(layer, nbits=8):
+def qlin_pertensor(layer, nbits=8, calibration_data=None):
     tensor = layer.weight.data
-    qmin = 0.
-    qmax = 2.**nbits - 1.
-    
     min_val, max_val = tensor.min(), tensor.max()
-
-    scale = (max_val - min_val) / (qmax - qmin)
+    if calibration_data == None:
+        scale, min_val, qmin, qmax = minmax_scaler(tensor, nbits=nbits)
+    else: 
+        raise NotImplementedError
     q_tensor = (tensor / scale + 0.5).clamp(qmin, qmax).round()
     q_tensor = q_tensor * scale + min_val
     layer.weight.data = q_tensor
     return layer
 
-def quantize_model(model): 
+def quantize_model(model, configuration=[]granularity="pertensor"): 
     qlayers = []
     for name, layer in model.named_children():
+        # Convolution layers
         if isinstance(layer, nn.Conv2d):
-            layer = convquant_perchannel(layer)
+            if granularity == "tensor":
+                layer = qconv_pertensor(layer)
+            elif granularity == "channel":
+                layer = qconv_perchannel(layer)
+            if granularity == "filter":
+                layer = qconv_perfilter(layer)
+
+        # Linear Layers
         if isinstance(layer, nn.Linear):
-            layer = linquant_pertensor(layer)
+            layer = qlin_pertensor(layer)
+
+        # BatchNorm Lyaers 
+        if isinstance(layer, nn.BatchNorm2d):
+            layer = qlin_pertensor(layer)
         qlayers.append(layer)
     return nn.Sequential(*qlayers)
 
 
 
-layer = nn.Conv2d(in_channels=5, out_channels=16, kernel_size=3)
-
-qlayer = qconv_perchannel(layer)
-print(qlayer.weight.data.shape)
+print(model)
