@@ -198,31 +198,77 @@ def quantize_network(model, configuration, granularity="tensor"):
 
     model.load_state_dict(qdict)
     return model
+
+
+
 ############################################## Quantization ##########################################
 
 
+new_state_dict = {}
+
+def your_function(weight):
+    weight = weight * 2
+    return weight
+
+
+
+def quantize_recursive(module, module_name, state_dict, configuration, granularity new_state_dict=None, idx=None):
+    if new_state_dict is None:
+        new_state_dict = {}
+    
+    if idx is None:
+        idx = 0
+
+    is_leaf_module = len(list(module.children())) == 0
+    if is_leaf_module and isinstance(module, (nn.Conv2d, nn.BatchNorm2d, nn.Linear)):
+        # Apply the function to the module's weights and bias if they exist
+        idx += 1
+        for name, param in module.named_parameters():
+            if name == "weight":
+                param_key = f"{module_name}.{name}" if module_name else name
+                new_state_dict[param_key] = your_function(param.data)
+    else:
+        # Call this function recursively for each submodule
+        for name, submodule in module.named_children():
+            if name:  # avoid self-recursion on the module itself
+                full_name = f"{module_name}.{name}" if module_name else name
+                new_state_dict, idx = quantize_recursive(submodule, full_name, state_dict, your_function, new_state_dict=new_state_dict, idx=idx)
+
+    return new_state_dict, idx
+    
+    
+
+
+def quantize_model(model, configuration, granularity="tensor"):
+    state_dict = model.state_dict()
+
+    new_state_dict, idx = quantize_recursive(model, None, state_dict, configuration, granularity)
+
+    for key in state_dict.keys():
+        if key not in list(new_state_dict.keys()):
+            new_state_dict[key] = state_dict[key]
+
+    model.load_state_dict(new_state_dict)
+    return model
 
 
 model = network.GeoLocalizationNet(args).eval()
+qmodel = network.GeoLocalizationNet(args).eval()
 
-configuration = np.random.choice([6, 16, 32], size=count_conv2d_layers_recursive(model))
+configuration = np.random.choice(["int8", "fp16", "fp32"], size=103)
+qmodel = quantize_model(qmodel, configuration, granularity="tensor")
 
-
-sample_input = torch.randn(1, 3, 480, 640)
-
-out1 = model(sample_input).flatten().detach().numpy()
-
-qmodel = quantize_network(model, configuration)
-
-out2 = qmodel(sample_input).flatten().detach().numpy()
-
-for i in range(len(out1)):
-    print(out1[i], out2[i])
+qsd = qmodel.state_dict()
+sd = model.state_dict()
 
 
+"""
+for key, value in sd.items():
+    qvalue = qsd[key]
+    print(key, (value.detach().numpy() == qvalue.detach().numpy()).all())
 
 
-
+"""
         
 
 
