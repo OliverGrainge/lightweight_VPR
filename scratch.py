@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm 
 import numpy as np
 from torch.optim import Adam
+import util
 
 args = parser.parse_arguments()
 args.backbone = "mobilenetv2conv4"
@@ -15,7 +16,8 @@ args.aggregation = "mac"
 args.train_batch_size=2
 args.infer_batch_size=1
 args.fc_output_dim=1024
-args.resume = "/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_1024/best_model.pth"
+args.device = "cpu"
+args.resume = "/Users/olivergrainge/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_1024/best_model.pth"
 
 
 model = network.GeoLocalizationNet(args).eval()
@@ -29,20 +31,20 @@ def quantize_tensor(tensor: torch.tensor, scale: torch.tensor, qmin: float, qmax
 
 def quantize_channel(tensor: torch.tensor, scale: torch.tensor, qmin: float, qmax: float):
     q_channels = []
-    reshaped_tensor = tensor.permute(1, 0, 2, 3).contiguous().view(tensor.size(1), -1)
+    reshaped_tensor = tensor.permute(1, 0, 2, 3)
     for i in range(reshaped_tensor.size(0)):
         channel_weights = reshaped_tensor[i]
         q_channel = (channel_weights / scale[i]).clamp(qmin, qmax).round()
-        q_channel = q_channel * scale 
+        q_channel = q_channel * scale[i]
         q_channels.append(q_channel)
-    q_channels = torch.stack(q_channels).view_as(tensor.permute(1, 0, 2, 3)).permute(1, 0, 2, 3)
+    q_channels = torch.stack(q_channels).permute(1, 0, 2, 3)
     return q_channels
 
 def quantize_filter(tensor: torch.tensor, scale: torch.tensor, qmin: float, qmax: float):
     q_tensors = []
-    for i, channel in enumerate(range(tensor.size(0))):
-        q_tensor = (tensor[channel] / scale[i]).clamp(qmin, qmax).round()
-        q_tensor = q_tensor * scale 
+    for i, channel in enumerate(tensor):
+        q_tensor = (channel / scale[i]).clamp(qmin, qmax).round()
+        q_tensor = q_tensor * scale[i]
         q_tensors.append(q_tensor)
     q_tensor = torch.stack(q_tensors)
     return q_tensor
@@ -115,10 +117,8 @@ class ActivationCollector:
         return self.activations
 
 def minmax_scaler(tensor: torch.tensor, precision: str="int8", granularity="tensor"):
-
     if precision == "fp32" or precision == "fp16":
         return None
-
     if granularity == "tensor" or tensor.ndim <= 2:
         qmin, qmax = get_qrange(precision=precision)
         min_val, max_val = tensor.min(), tensor.max()
@@ -140,13 +140,14 @@ def minmax_scaler(tensor: torch.tensor, precision: str="int8", granularity="tens
             
     elif granularity == "filter":
         scales = []
-        for filter in range(tensor.size(0)):
+        for filter in tensor:
             qmin, qmax = get_qrange(precision=precision)
             min_val, max_val = filter.min(), filter.max()
             max_abs = max(abs(min_val), abs(max_val))
             scale = max_abs / max(qmax, -qmin)
             scales.append(scale)
-        return torch.tensor(scales).clone().detach().requires_grad_(True)
+        scales = torch.tensor(scales).clone().detach().requires_grad_(True)
+        return scales
 
 
 
@@ -199,9 +200,7 @@ def entropy_scaler(tensor: torch.tensor, precision: str="int8", granularity="ten
 
             # Compute the histogram of the quantized tensor
             q_hist = torch.histc(quantized_tensor, bins=num_bins, min=tensor.min().item(), max=tensor.max().item())
-            print(q_hist.requires_grad)
             q_prob_dist = q_hist / q_hist.sum()
-            print(q_prob_dist.requires_grad)
             
             # Compute the KL divergence
             loss = kl_divergence(prob_dist, q_prob_dist)
@@ -276,7 +275,7 @@ def quantize_recursive(module, module_name, state_dict, configuration, granulari
                     scale = minmax_scaler(weight, precision=configuration[idx], granularity=granularity)
                 elif calibration == "entropy":
                     scale = entropy_scaler(weight, precision=configuration[idx], granularity=granularity)
-                qtensor = quantize_weights(weight, scale, precision=configuration[idx])
+                qtensor = quantize_weights(weight, scale, precision=configuration[idx], granularity=granularity)
                 new_state_dict[param_key] = qtensor
         idx += 1
     else:
@@ -286,8 +285,8 @@ def quantize_recursive(module, module_name, state_dict, configuration, granulari
                 full_name = f"{module_name}.{name}" if module_name else name
                 new_state_dict, idx = quantize_recursive(submodule, full_name, state_dict, configuration, granularity, calibration=calibration, new_state_dict=new_state_dict, idx=idx)
     return new_state_dict, idx
-    
-    
+
+
 def quantize_model(model, configuration, granularity="tensor", calibration="minmax"):
     state_dict = model.state_dict()
     new_state_dict, idx = quantize_recursive(model, None, state_dict, configuration, granularity, calibration=calibration)
@@ -298,14 +297,16 @@ def quantize_model(model, configuration, granularity="tensor", calibration="minm
     model.load_state_dict(new_state_dict)
     return model
 
-
+############################################# QUANTIZATION ###############################################
 model = network.GeoLocalizationNet(args).eval()
 qmodel = network.GeoLocalizationNet(args).eval()
+model = util.resume_model(args, model)
+qmodel = util.resume_model(args, qmodel)
 
 
-configuration = np.random.choice(["int8", "fp16", "fp32"], size=103)
+configuration = np.random.choice(["int8"], size=103)
 
-qmodel = quantize_model(qmodel, configuration, granularity="tensor", calibration="entropy")
+qmodel = quantize_model(qmodel, configuration, granularity="channel", calibration="minmax")
 
 def check_equivalence(model1, model2):
     sd2 = model2.state_dict()
@@ -314,9 +315,17 @@ def check_equivalence(model1, model2):
         print(key, (sd2[key].detach().numpy() == sd1[key].detach().numpy()).all())
 
     
-#check_equivalence(resnet1, qmodel)
+check_equivalence(model, qmodel)
 
 
+sample_input = torch.randn(1, 3, 480, 640)
+
+out = qmodel(sample_input).flatten()
+out1 = model(sample_input).flatten()
+print(out.shape)
+print(out1.shape)
 
 
+for i in range(100):
+    print(out[i].item(), out1[i].item())
 
