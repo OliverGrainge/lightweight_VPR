@@ -13,19 +13,17 @@ import contextlib
 
 import torch
 import torch.nn.functional as F
-
 from torch.nn.modules.batchnorm import _BatchNorm
 
 try:
-    from torch.nn.parallel._functions import ReduceAddCoalesced, Broadcast
+    from torch.nn.parallel._functions import Broadcast, ReduceAddCoalesced
 except ImportError:
     ReduceAddCoalesced = Broadcast = None
 
 try:
     from jactorch.parallel.comm import SyncMaster
-    from jactorch.parallel.data_parallel import (
-        JacDataParallel as DataParallelWithCallback,
-    )
+    from jactorch.parallel.data_parallel import \
+        JacDataParallel as DataParallelWithCallback
 except ImportError:
     from .comm import SyncMaster
     from .replicate import DataParallelWithCallback

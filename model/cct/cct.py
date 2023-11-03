@@ -1,13 +1,12 @@
-from torch.hub import load_state_dict_from_url
-import torch.nn as nn
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
-from .transformers import TransformerClassifier
-from .tokenizer import Tokenizer
-from .helpers import pe_check
-
 from timm.models.registry import register_model
+from torch.hub import load_state_dict_from_url
 
+from .helpers import pe_check
+from .tokenizer import Tokenizer
+from .transformers import TransformerClassifier
 
 model_urls = {
     "cct_7_3x1_32": "https://shi-labs.com/projects/cct/checkpoints/pretrained/cct_7_3x1_32_cifar10_300epochs.pth",

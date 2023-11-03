@@ -1,13 +1,14 @@
-import math
-import torch
-import faiss
 import logging
+import math
+
+import faiss
 import numpy as np
-from tqdm import tqdm
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.parameter import Parameter
 from torch.utils.data import DataLoader, SubsetRandomSampler
+from tqdm import tqdm
 
 import model.functional as LF
 import model.normalization as normalization

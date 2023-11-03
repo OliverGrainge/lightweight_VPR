@@ -1,20 +1,20 @@
-import os
-import torch
 import logging
-import torchvision
-from torch import nn
+import os
 from os.path import join
-from transformers import ViTModel
-from google_drive_downloader import GoogleDriveDownloader as gdd
-import torch
-import torchvision.models as models
-from torchvision.models import MobileNet_V2_Weights
-import timm
 
-from model.cct import cct_14_7x2_384
-from model.aggregation import Flatten
-from model.normalization import L2Norm
+import timm
+import torch
+import torchvision
+import torchvision.models as models
+from google_drive_downloader import GoogleDriveDownloader as gdd
+from torch import nn
+from torchvision.models import MobileNet_V2_Weights
+from transformers import ViTModel
+
 import model.aggregation as aggregation
+from model.aggregation import Flatten
+from model.cct import cct_14_7x2_384
+from model.normalization import L2Norm
 
 # Pretrained models on Google Landmarks v2 and Places 365
 PRETRAINED_MODELS = {

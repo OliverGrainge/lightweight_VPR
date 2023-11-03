@@ -205,18 +205,27 @@ df = df[df["aggregation"] == aggregation]
 df = df[["precision", "fc_output_dim", "pitts30k_r@1", "nordland_r@1", "st_lucia_r@1"]]
 
 fig = plt.figure(figsize=(10, 8))
-ax = fig.add_subplot(111, projection='3d')
+ax = fig.add_subplot(111, projection="3d")
 precision_mapping = {"fp32_comp": 1, "fp16_comp": 2, "int8_comp": 3}
-df['precision_numeric'] = df['precision'].map(precision_mapping)
+df["precision_numeric"] = df["precision"].map(precision_mapping)
 # Scatter plot
-sc = ax.scatter(df['precision_numeric'], df['fc_output_dim'], df[dataset], c=df[dataset], cmap='viridis', s=60)
+sc = ax.scatter(
+    df["precision_numeric"],
+    df["fc_output_dim"],
+    df[dataset],
+    c=df[dataset],
+    cmap="viridis",
+    s=60,
+)
 
 # Surface plot
-ax.plot_trisurf(df['precision_numeric'], df['fc_output_dim'], df[dataset], cmap='viridis', alpha=0.5)
+ax.plot_trisurf(
+    df["precision_numeric"], df["fc_output_dim"], df[dataset], cmap="viridis", alpha=0.5
+)
 
 
-ax.set_xlabel('Precision')
-ax.set_ylabel('fc_output_dim')
+ax.set_xlabel("Precision")
+ax.set_ylabel("fc_output_dim")
 ax.set_zlabel(dataset)
 ax.set_xticks(list(precision_mapping.values()))
 ax.set_xticklabels(list(precision_mapping.keys()))
@@ -224,7 +233,7 @@ ax.view_init(elev=80, azim=0)
 
 # Colorbar
 cbar = fig.colorbar(sc)
-cbar.ax.set_ylabel('pitts30k_r@1 values')
+cbar.ax.set_ylabel("pitts30k_r@1 values")
 
-plt.title('3D Surface Plot of precision, fc_output_dim against pitts30k_r@1')
+plt.title("3D Surface Plot of precision, fc_output_dim against pitts30k_r@1")
 plt.show()

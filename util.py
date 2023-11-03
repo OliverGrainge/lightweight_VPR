@@ -9,8 +9,8 @@ from os.path import join
 import numpy as np
 import torch
 import torch.nn as nn
-#import torch_tensorrt
-#import torchscan
+# import torch_tensorrt
+# import torchscan
 from sklearn.decomposition import PCA
 from torch.cuda.amp import autocast
 from torchvision import models
@@ -356,6 +356,7 @@ class mixedPrecision(nn.Module):
         with autocast():
             output = self.model(x)
         return output
+
 
 """
 def quantize_model(model, precision="fp16", calibration_dataset=None, args=None):

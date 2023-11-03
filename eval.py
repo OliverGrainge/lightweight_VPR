@@ -139,7 +139,7 @@ result_data["id"] = (
     + QAT_FLAG
     + "_"
     + str(args.fc_output_dim)
-) 
+)
 result_data["model_path"] = args.resume
 result_data["fc_output_dim"] = args.fc_output_dim
 result_data["backbone"] = args.backbone
