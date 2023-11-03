@@ -8,7 +8,7 @@ import torch.nn.functional as F
 import torchvision
 from torch import nn
 from torch.optim import Adam
-from torch.utils.data import DataLoader, TensorDataset
+from torch.utils.data import DataLoader, TensorDataset, Dataset
 from tqdm import tqdm
 
 #import datasets_ws
@@ -369,28 +369,47 @@ def mse_scaler(tensor: torch.tensor, precision: str = "int8", granularity="tenso
 
 ########################################## Activation Qauntization ##############################################
 
-# This will be run after every relu function through a hook function 
+# This will be run after every relu function
 
-def activation_quantization(module, input, output, precision="fp16", granularity="tensor"):
-    scale = minmax_scaler(output, precision=precision, granularity=granularity)
-    qoutput = quantize_weights(output, scale, precision=precision, granularity=granularity) 
-    return qoutput
+class QintTensorLayer(nn.Module):
+    def __init__(self, scale, precision):
+        super().__init__()
+        
+        self.scale = torch.nn.Parameter(scale)
+        self.qmin, self.qmax = get_qrange(precision=precision)
 
+    def forward(self, x):
+        q_tensor = (x / self.scale).clamp(self.qmin, self.qmax).round()
+        q_tensor = q_tensor * self.scale
+        return q_tensor
+
+class QfloatTensorLayer(nn.Module):
+    def __init__(self, precision):
+        super().__init__()
+        self.precision = precision
+
+    def forward(self, x):
+        if self.precision == "fp32":
+            return x 
+        else: 
+            return x.half().float()
+        
+        
 
 ######################################## RUN QUANTIZATION ###############################################
-
-new_state_dict = {}
-
-
 def quantize_recursive(
+    model,
     module,
     module_name,
     state_dict,
     configuration,
     granularity,
     calibration="minmax",
+    activation_data=None,
     new_state_dict=None,
     idx=None,
+    type="layer",
+    layer_types=(nn.Conv2d, nn.BatchNorm2d, nn.Linear)
 ):
     if new_state_dict is None:
         new_state_dict = {}
@@ -398,60 +417,210 @@ def quantize_recursive(
         idx = 0
 
     is_leaf_module = len(list(module.children())) == 0
-    if is_leaf_module and isinstance(module, (nn.Conv2d, nn.BatchNorm2d, nn.Linear)):
-        # Apply the function to the module's weights and bias if they exist
-        for name, param in module.named_parameters():
-            if name == "weight":
-                param_key = f"{module_name}.{name}" if module_name else name
+    if type == "layer":
+        if is_leaf_module and isinstance(module, layer_types):
+            # Apply the function to the module's weights and bias if they exist
+                for name, param in module.named_parameters():
+                    if name == "weight":
+                        param_key = f"{module_name}.{name}" if module_name else name
 
-                weight = param.data.clone().detach()
-                if calibration == "minmax":
-                    scale = minmax_scaler(
-                        weight, precision=configuration[idx], granularity=granularity
+                        weight = param.data.clone().detach()
+                        if calibration == "minmax":
+                            scale = minmax_scaler(
+                                weight, precision=configuration[idx], granularity=granularity
+                            )
+                        elif calibration == "entropy":
+                            scale = entropy_scaler(
+                                weight, precision=configuration[idx], granularity=granularity
+                            )
+                        elif calibration == "mse":
+                            scale = mse_scaler(
+                                weight, precision=configuration[idx], granularity=granularity
+                            )
+                        qtensor = quantize_weights(
+                            weight, scale, precision=configuration[idx], granularity=granularity
+                        )
+                        new_state_dict[param_key] = qtensor
+                idx += 1
+                print(idx)
+        else:
+            # Call this function recursively for each submodule
+            for name, submodule in module.named_children():
+                if name:  # avoid self-recursion on the module itself
+                    full_name = f"{module_name}.{name}" if module_name else name
+                    model, new_state_dict, idx = quantize_recursive(
+                        model,
+                        submodule,
+                        full_name,
+                        state_dict,
+                        configuration,
+                        granularity,
+                        calibration=calibration,
+                        new_state_dict=new_state_dict,
+                        activation_data=activation_data,
+                        type=type,
+                        layer_types=layer_types,
+                        idx=idx,
                     )
-                elif calibration == "entropy":
-                    scale = entropy_scaler(
-                        weight, precision=configuration[idx], granularity=granularity
-                    )
-                elif calibration == "mse":
-                    print(idx)
-                    scale = mse_scaler(
-                        weight, precision=configuration[idx], granularity=granularity
-                    )
-                qtensor = quantize_weights(
-                    weight, scale, precision=configuration[idx], granularity=granularity
+
+    if type == "activation":
+        contains_activation = False 
+        for child in module.children():
+            for grandchild in child.children():
+                if isinstance(grandchild, layer_types):
+                    contains_activation = True
+        
+        if contains_activation:
+            if calibration == "minmax":
+                scale = minmax_scaler(
+                    activation_data[idx], precision=configuration[idx], granularity=granularity
                 )
-                new_state_dict[param_key] = qtensor
-        idx += 1
-    else:
-        # Call this function recursively for each submodule
-        for name, submodule in module.named_children():
-            if name:  # avoid self-recursion on the module itself
-                full_name = f"{module_name}.{name}" if module_name else name
-                new_state_dict, idx = quantize_recursive(
-                    submodule,
-                    full_name,
-                    state_dict,
-                    configuration,
-                    granularity,
-                    calibration=calibration,
-                    new_state_dict=new_state_dict,
-                    idx=idx,
+            elif calibration == "entropy":
+                scale = entropy_scaler(
+                    activation_data[idx], precision=configuration[idx], granularity=granularity
                 )
-    return new_state_dict, idx
+            elif calibration == "mse":
+                scale = mse_scaler(
+                    activation_data[idx], precision=configuration[idx], granularity=granularity
+                )
+            
+            if granularity != "tensor":
+                raise Exception("Filter or Channel quantization not implemented for Activaiton Quantization")
+            if configuration[idx].startswith("fp"):
+                for second_name, second_module in module.named_children():
+                    for third_name, third_module in second_module.named_children():
+                        print(name, module)
+                        print("===============")
+                module = nn.Sequential(module, QintTensorLayer(scale, precision=configuration[idx]))
+                #setattr(model, module, nn.Sequential(module, QintTensorLayer(scale, precision=configuration[idx])))
+            else: 
+                for second_name, second_module in module.named_children():
+                    for third_name, third_module in second_module.named_children():
+                        print(name, module)
+                        print("===============")
+
+                module = nn.Sequential(module, QintTensorLayer(scale, precision=configuration[idx]))
+                #setattr(model, module, nn.Sequential(module, QfloatTensorLayer(precision=configuration[idx])))
+
+            idx += 1
+
+        else:
+            # Call this function recursively for each submodule
+            for name, submodule in module.named_children():
+                if name:  # avoid self-recursion on the module itself
+                    full_name = f"{module_name}.{name}" if module_name else name
+                    model, new_state_dict, idx = quantize_recursive(
+                        model,
+                        submodule,
+                        full_name,
+                        state_dict,
+                        configuration,
+                        granularity,
+                        calibration=calibration,
+                        new_state_dict=new_state_dict,
+                        activation_data=activation_data,
+                        type=type,
+                        layer_types=layer_types,
+                        idx=idx,
+                    )
+
+    
+    return model, new_state_dict, idx
 
 
-def quantize_model(model, configuration, granularity="tensor", calibration="minmax"):
-    state_dict = model.state_dict()
-    new_state_dict, idx = quantize_recursive(
-        model, None, state_dict, configuration, granularity, calibration=calibration
-    )
-    for key in state_dict.keys():
-        if key not in list(new_state_dict.keys()):
-            new_state_dict[key] = state_dict[key]
+    
 
-    model.load_state_dict(new_state_dict)
-    return model
+
+
+
+
+class Quantizer:
+    def __init__(self, model, 
+                 layer_precision="int8",
+                 activation_precision="int32",
+                 layer_configuration=None,
+                 activation_configuration=None,
+                 layer_granularity="channel",
+                 activation_granularity="tensor", 
+                 calibration_type="minmax", 
+                 calibration_loader=None): 
+        # the pytorch model to quantize
+        self.model = model
+        self.state_dict = model.state_dict()
+        # the per layer/activation precision configurations
+        self.layer_configuration = layer_configuration
+        self.activation_configuration = activation_configuration
+        # layer/activation precision in the absence of a configuration
+        self.layer_precision = layer_precision
+        self.activation_precision = activation_precision
+        # the granularity of quantization preicision
+        self.layer_granularity = layer_granularity 
+        self.activation_granularity = activation_granularity 
+        # calibration type
+        self.calibraion_type = calibration_type
+        self.calibration_loader = calibration_loader
+
+
+    def collect_activations(self):
+        if self.calibration_loader is None:
+            raise Exception("Must Pass a Calibration loader if quantizing activations")
+        else: 
+            activations = []
+            for batch in self.calibration_loader:
+                collector = ActivationCollector()
+                collector.register_hooks(model, layers=(nn.ReLU, nn.ReLU6))
+                model(batch)
+                activations.append(collector.activations)
+        
+        min_length = min(len(sublist) for sublist in activations)
+        # Now, stack (or concatenate) the tensors for the first and second elements across all sublists
+        stacked_activations = []
+        for i in range(min_length):
+            # Using torch.stack to create a new dimension for stacking
+            stacked = torch.stack([sublist[i] for sublist in activations])
+            stacked_activations.append(stacked)
+        self.activation_data = stacked_activations
+
+
+    def quantize_layers(self):
+        if self.layer_configuration is None:
+            self.layer_configuration = [self.layer_precision for _ in range(1000)]
+
+        state_dict = self.model.state_dict()
+
+        self.model, new_state_dict, _ = quantize_recursive(
+            self.model, self.model, None, state_dict,
+            self.layer_configuration,
+            self.layer_granularity,
+            calibration=self.calibraion_type,
+            type="layer", 
+            layer_types=(nn.Conv2d, nn.BatchNorm2d, nn.Linear) 
+        )
+
+
+        for key in state_dict.keys():
+            if key not in list(new_state_dict.keys()):
+                new_state_dict[key] = state_dict[key]
+
+        self.model.load_state_dict(new_state_dict)
+        return self.model
+
+    def quantize_activations(self):
+        if self.layer_configuration is None:
+            self.layer_configuration = [self.layer_precision for _ in range(1000)]
+
+        state_dict = self.model.state_dict()
+        self.model, _, _ = quantize_recursive(
+            model, model, None, state_dict,
+            self.activation_configuration,
+            self.activation_granularity,
+            calibration=self.calibraion_type,
+            activation_data=self.activation_data,
+            type="activation",
+            layer_types=(nn.ReLU, nn.ReLU6)
+        )
+        return self.model
+
 
 
 ############################################# QUANTIZATION ###############################################
@@ -460,20 +629,36 @@ qmodel = network.GeoLocalizationNet(args).eval()
 model = util.resume_model(args, model)
 qmodel = util.resume_model(args, qmodel)
 
+layer_configuration = ["int8" for _ in range(500)]
+activation_configuration = ["int8" for _ in range(500)]
 
-configuration = np.random.choice(["int8"], size=103)
+class CalibrationDataset(Dataset):
+    def __init__(self, images):
+        super().__init__()
+        self.images = images
+    
+    def __len__(self):
+        return self.images.size(0)
 
-qmodel = quantize_model(qmodel, configuration, granularity="channel", calibration="minmax")
+    def __getitem__(self, idx):
+        return self.images[idx]
 
 
-def check_equivalence(model1, model2):
-    sd2 = model2.state_dict()
-    sd1 = model1.state_dict()
-    for key in sd1:
-        print(key, (sd2[key].detach().numpy() == sd1[key].detach().numpy()).all())
+cal_ds = CalibrationDataset(torch.randn(20, 3, 480, 640))
+cal_dl = DataLoader(cal_ds, batch_size=10)
+
+quantizer = Quantizer(qmodel,
+    layer_configuration=layer_configuration,
+    activation_configuration=activation_configuration,
+    activation_granularity="tensor",
+    layer_granularity="channel",
+    calibration_type="minmax", 
+    calibration_loader=cal_dl)
 
 
-check_equivalence(model, qmodel)
+quantizer.collect_activations()
+qmodel = quantizer.quantize_activations()
+
 
 
 

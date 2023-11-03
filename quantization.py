@@ -11,7 +11,7 @@ from torch.optim import Adam
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
-#import datasets_ws
+# import datasets_ws
 import util
 from model import network
 
@@ -23,7 +23,9 @@ args.infer_batch_size = 1
 args.fc_output_dim = 1024
 args.device = "cpu"
 args.dataset_name = "eynsham"
-args.datasets_folder = "/Users/olivergrainge/Documents/github/lightweight_VPR/datasets_vg/datasets"
+args.datasets_folder = (
+    "/Users/olivergrainge/Documents/github/lightweight_VPR/datasets_vg/datasets"
+)
 args.resume = "/Users/olivergrainge/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_1024/best_model.pth"
 
 
@@ -367,13 +369,19 @@ def mse_scaler(tensor: torch.tensor, precision: str = "int8", granularity="tenso
         scale.data.clamp_(min=1e-8)
     return scale.detach()
 
+
 ########################################## Activation Qauntization ##############################################
 
-# This will be run after every relu function through a hook function 
+# This will be run after every relu function through a hook function
 
-def activation_quantization(module, input, output, precision="fp16", granularity="tensor"):
+
+def activation_quantization(
+    module, input, output, precision="fp16", granularity="tensor"
+):
     scale = minmax_scaler(output, precision=precision, granularity=granularity)
-    qoutput = quantize_weights(output, scale, precision=precision, granularity=granularity) 
+    qoutput = quantize_weights(
+        output, scale, precision=precision, granularity=granularity
+    )
     return qoutput
 
 
@@ -463,7 +471,9 @@ qmodel = util.resume_model(args, qmodel)
 
 configuration = np.random.choice(["int8"], size=103)
 
-qmodel = quantize_model(qmodel, configuration, granularity="channel", calibration="minmax")
+qmodel = quantize_model(
+    qmodel, configuration, granularity="channel", calibration="minmax"
+)
 
 
 def check_equivalence(model1, model2):
@@ -476,8 +486,6 @@ def check_equivalence(model1, model2):
 check_equivalence(model, qmodel)
 
 
-
-
 ########################################## Model Evaluation ###########################################
 
 """
@@ -487,5 +495,3 @@ recalls, retrieval_time, feature_bytes, recalls_str = test.test(
     args, test_ds, model, args.test_method, None
 )
 """
-
-

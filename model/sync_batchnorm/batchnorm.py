@@ -22,8 +22,9 @@ except ImportError:
 
 try:
     from jactorch.parallel.comm import SyncMaster
-    from jactorch.parallel.data_parallel import \
-        JacDataParallel as DataParallelWithCallback
+    from jactorch.parallel.data_parallel import (
+        JacDataParallel as DataParallelWithCallback,
+    )
 except ImportError:
     from .comm import SyncMaster
     from .replicate import DataParallelWithCallback

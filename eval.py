@@ -42,8 +42,7 @@ import commons
 import datasets_ws
 import util
 from model import network
-from util import (benchmark_latency, count_parameters, measure_memory,
-                  quantize_model)
+from util import benchmark_latency, count_parameters, measure_memory, quantize_model
 
 OFF_THE_SHELF_RADENOVIC = {
     "resnet50conv5_sfm": "http://cmp.felk.cvut.cz/cnnimageretrieval/data/networks/retrieval-SfM-120k/rSfM120k-tl-resnet50-gem-w-97bf910.pth",
