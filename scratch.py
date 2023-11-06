@@ -237,7 +237,6 @@ def entropy_scaler(tensor: torch.tensor, precision: str = "int8", granularity="t
         # Compute the quantized tensor
         if granularity == "tensor" or tensor.ndim <= 2:
             quantized_tensor = quantize_tensor(tensor, scale, qmin, qmax)
-            print(quantized_tensor.requires_grad)
 
             # Compute the histogram of the quantized tensor
             q_hist = torch.histc(
@@ -250,7 +249,6 @@ def entropy_scaler(tensor: torch.tensor, precision: str = "int8", granularity="t
 
             # Compute the KL divergence
             loss = kl_divergence(prob_dist, q_prob_dist)
-            print(loss.requires_grad)
 
             # Perform the optimization step
             loss.backward()
@@ -367,6 +365,28 @@ def mse_scaler(tensor: torch.tensor, precision: str = "int8", granularity="tenso
         scale.data.clamp_(min=1e-8)
     return scale.detach()
 
+
+
+
+def calibration(tensor: torch.tensor, precision: str = "int8", granularity="tensor", calibration_type: str="minmax"):
+    if calibration_type == "minmax":
+        scale = minmax_scaler(
+            tensor, precision=precision, granularity=granularity
+        )
+        return scale
+    elif calibration_type == "entropy":
+        scale = entropy_scaler(
+            tensor, precision=precision, granularity=granularity
+        )
+        return scale
+    elif calibration_type == "mse":
+        scale = mse_scaler(
+            tensor, precision=precision, granularity=granularity
+                    )
+        return scale
+    else: 
+        raise Exception("Calibrator Not Implemented")
+
 ########################################## Activation Qauntization ##############################################
 
 # This will be run after every relu function
@@ -397,18 +417,16 @@ class QfloatTensorLayer(nn.Module):
         
 
 ######################################## RUN QUANTIZATION ###############################################
-def quantize_recursive(
+def quantize_layer_recursive(
     model,
     module,
     module_name,
     state_dict,
     configuration,
     granularity,
-    calibration="minmax",
-    activation_data=None,
+    calibration_type="minmax",
     new_state_dict=None,
     idx=None,
-    type="layer",
     layer_types=(nn.Conv2d, nn.BatchNorm2d, nn.Linear)
 ):
     if new_state_dict is None:
@@ -417,114 +435,89 @@ def quantize_recursive(
         idx = 0
 
     is_leaf_module = len(list(module.children())) == 0
-    if type == "layer":
-        if is_leaf_module and isinstance(module, layer_types):
-            # Apply the function to the module's weights and bias if they exist
-                for name, param in module.named_parameters():
-                    if name == "weight":
-                        param_key = f"{module_name}.{name}" if module_name else name
+    if is_leaf_module and isinstance(module, layer_types):
+        # Apply the function to the module's weights and bias if they exist
+        for name, param in module.named_parameters():
+            if name == "weight":
+                param_key = f"{module_name}.{name}" if module_name else name
+                weight = param.data.clone().detach()
+                scale = calibration(weight, precision=configuration[idx], granularity=granularity, calibration_type=calibration_type)
+                qtensor = quantize_weights(weight, scale, precision=configuration[idx], granularity=granularity)
+                new_state_dict[param_key] = qtensor
+        idx += 1
 
-                        weight = param.data.clone().detach()
-                        if calibration == "minmax":
-                            scale = minmax_scaler(
-                                weight, precision=configuration[idx], granularity=granularity
-                            )
-                        elif calibration == "entropy":
-                            scale = entropy_scaler(
-                                weight, precision=configuration[idx], granularity=granularity
-                            )
-                        elif calibration == "mse":
-                            scale = mse_scaler(
-                                weight, precision=configuration[idx], granularity=granularity
-                            )
-                        qtensor = quantize_weights(
-                            weight, scale, precision=configuration[idx], granularity=granularity
-                        )
-                        new_state_dict[param_key] = qtensor
-                idx += 1
-                print(idx)
-        else:
-            # Call this function recursively for each submodule
-            for name, submodule in module.named_children():
-                if name:  # avoid self-recursion on the module itself
-                    full_name = f"{module_name}.{name}" if module_name else name
-                    model, new_state_dict, idx = quantize_recursive(
-                        model,
-                        submodule,
-                        full_name,
-                        state_dict,
-                        configuration,
-                        granularity,
-                        calibration=calibration,
-                        new_state_dict=new_state_dict,
-                        activation_data=activation_data,
-                        type=type,
-                        layer_types=layer_types,
-                        idx=idx,
-                    )
-
-    if type == "activation":
-        contains_activation = False 
-        for child in module.children():
-            for grandchild in child.children():
-                if isinstance(grandchild, layer_types):
-                    contains_activation = True
-        
-        if contains_activation:
-            if calibration == "minmax":
-                scale = minmax_scaler(
-                    activation_data[idx], precision=configuration[idx], granularity=granularity
+    else:
+        # Call this function recursively for each submodule
+        for name, submodule in module.named_children():
+            if name:  # avoid self-recursion on the module itself
+                full_name = f"{module_name}.{name}" if module_name else name
+                model, new_state_dict, idx = quantize_layer_recursive(
+                    model,
+                    submodule,
+                    full_name,
+                    state_dict,
+                    configuration,
+                    granularity,
+                    calibration_type=calibration_type,
+                    new_state_dict=new_state_dict,
+                    type=type,
+                    layer_types=layer_types,
+                    idx=idx,
                 )
-            elif calibration == "entropy":
-                scale = entropy_scaler(
-                    activation_data[idx], precision=configuration[idx], granularity=granularity
-                )
-            elif calibration == "mse":
-                scale = mse_scaler(
-                    activation_data[idx], precision=configuration[idx], granularity=granularity
-                )
-            
-            if granularity != "tensor":
-                raise Exception("Filter or Channel quantization not implemented for Activaiton Quantization")
-            if configuration[idx].startswith("fp"):
-                for second_name, second_module in module.named_children():
-                    for third_name, third_module in second_module.named_children():
-                        print(name, module)
-                        print("===============")
-                module = nn.Sequential(module, QintTensorLayer(scale, precision=configuration[idx]))
-                #setattr(model, module, nn.Sequential(module, QintTensorLayer(scale, precision=configuration[idx])))
-            else: 
-                for second_name, second_module in module.named_children():
-                    for third_name, third_module in second_module.named_children():
-                        print(name, module)
-                        print("===============")
 
-                module = nn.Sequential(module, QintTensorLayer(scale, precision=configuration[idx]))
-                #setattr(model, module, nn.Sequential(module, QfloatTensorLayer(precision=configuration[idx])))
 
-            idx += 1
 
-        else:
-            # Call this function recursively for each submodule
-            for name, submodule in module.named_children():
-                if name:  # avoid self-recursion on the module itself
-                    full_name = f"{module_name}.{name}" if module_name else name
-                    model, new_state_dict, idx = quantize_recursive(
-                        model,
-                        submodule,
-                        full_name,
-                        state_dict,
-                        configuration,
-                        granularity,
-                        calibration=calibration,
-                        new_state_dict=new_state_dict,
-                        activation_data=activation_data,
-                        type=type,
-                        layer_types=layer_types,
-                        idx=idx,
-                    )
-
+def quantize_activation_recursive(
+    model,
+    module,
+    module_name,
+    state_dict,
+    configuration,
+    granularity,
+    calibration_type="minmax",
+    activation_data=None,
+    new_state_dict=None,
+    idx=None,
+    layer_types=(nn.Conv2d, nn.BatchNorm2d, nn.Linear)
+):
     
+    if new_state_dict is None:
+        new_state_dict = {}
+    if idx is None:
+        idx = 0
+        
+    is_leaf_module = len(list(module.children())) == 0
+    if is_leaf_module and isinstance(module, layer_types):
+        scale = calibration(activation_data[idx], precision=configuration[idx], granularity=granularity, calibration_type=calibration_type)
+
+        if granularity != "tensor":
+            raise Exception("Filter or Channel quantization not implemented for Activaiton Quantization")
+
+        if configuration[idx].startswith("fp"):
+            setattr(module, "quantfloat", nn.Sequential(module, QfloatTensorLayer(precision=configuration[idx])))
+        else: 
+            setattr(module, "quantint", nn.Sequential(module, QintTensorLayer(scale, precision=configuration[idx])))
+
+        idx += 1
+    else:
+        # Call this function recursively for each submodule
+        for name, submodule in module.named_children():
+            if name:  # avoid self-recursion on the module itself
+                full_name = f"{module_name}.{name}" if module_name else name
+                model, new_state_dict, idx = quantize_activation_recursive(
+                    model,
+                    submodule,
+                    full_name,
+                    state_dict,
+                    configuration,
+                    granularity,
+                    calibration_type=calibration_type,
+                    new_state_dict=new_state_dict,
+                    activation_data=activation_data,
+                    layer_types=layer_types,
+                    idx=idx,
+                )
+
     return model, new_state_dict, idx
 
 
@@ -588,15 +581,13 @@ class Quantizer:
 
         state_dict = self.model.state_dict()
 
-        self.model, new_state_dict, _ = quantize_recursive(
+        self.model, new_state_dict, _ = quantize_layer_recursive(
             self.model, self.model, None, state_dict,
             self.layer_configuration,
             self.layer_granularity,
             calibration=self.calibraion_type,
-            type="layer", 
             layer_types=(nn.Conv2d, nn.BatchNorm2d, nn.Linear) 
         )
-
 
         for key in state_dict.keys():
             if key not in list(new_state_dict.keys()):
@@ -610,13 +601,12 @@ class Quantizer:
             self.layer_configuration = [self.layer_precision for _ in range(1000)]
 
         state_dict = self.model.state_dict()
-        self.model, _, _ = quantize_recursive(
+        self.model, _, _ = quantize_activation_recursive(
             model, model, None, state_dict,
             self.activation_configuration,
             self.activation_granularity,
-            calibration=self.calibraion_type,
+            calibration_type=self.calibraion_type,
             activation_data=self.activation_data,
-            type="activation",
             layer_types=(nn.ReLU, nn.ReLU6)
         )
         return self.model
@@ -629,8 +619,9 @@ qmodel = network.GeoLocalizationNet(args).eval()
 model = util.resume_model(args, model)
 qmodel = util.resume_model(args, qmodel)
 
+
 layer_configuration = ["int8" for _ in range(500)]
-activation_configuration = ["int8" for _ in range(500)]
+activation_configuration = ["fp16" for _ in range(500)]
 
 class CalibrationDataset(Dataset):
     def __init__(self, images):
@@ -657,15 +648,22 @@ quantizer = Quantizer(qmodel,
 
 
 quantizer.collect_activations()
+print(len(quantizer.activation_data))
 qmodel = quantizer.quantize_activations()
+#qmodel = quantizer.quantize_layers()
+
+sample_input = torch.randn(1, 3, 480, 640)
+
+out = qmodel(sample_input)
+print(out.shape)
 
 
 
 
+"""
 
 ########################################## Model Evaluation ###########################################
 
-"""
 test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
 
 recalls, retrieval_time, feature_bytes, recalls_str = test.test(
