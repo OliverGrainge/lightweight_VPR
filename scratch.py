@@ -24,7 +24,7 @@ args.fc_output_dim = 1024
 args.device = "cpu"
 args.dataset_name = "eynsham"
 args.datasets_folder = "/Users/olivergrainge/Documents/github/lightweight_VPR/datasets_vg/datasets"
-args.resume = "/Users/olivergrainge/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_1024/best_model.pth"
+args.resume = "/home/oliver/Documents/github/lightweight_VPR/weights/fp32/mobilenetv2conv4_mac_1024/best_model.pth"
 
 
 model = network.GeoLocalizationNet(args).eval()
@@ -120,7 +120,7 @@ class ActivationCollector:
     def hook_fn(self, module, input, output):
         self.activations.append(output)
 
-    def register_hooks(self, model, layers=(nn.Conv2d, nn.Linear, nn.BatchNorm2d)):
+    def register_hooks(self, model, layers=(nn.ReLU, nn.ReLU6, nn.BatchNorm2d)):
         hooks = []
         for layer in model.children():
             if isinstance(layer, layers):
@@ -342,7 +342,9 @@ def mse_scaler(tensor: torch.tensor, precision: str = "int8", granularity="tenso
         scale = max_abs / max(qmax, -qmin)
         scale = torch.nn.Parameter(scale)
 
-    optimizer = Adam([scale], lr=0.00001)
+    scale = scale.detach()
+
+    optimizer = Adam([scale], lr=0.0001)
     for round in range(20):  # Run for a number of iterations
         optimizer.zero_grad()
 
@@ -358,9 +360,10 @@ def mse_scaler(tensor: torch.tensor, precision: str = "int8", granularity="tenso
 
         # Ensure that scale is always positive and zero_point is within range
         loss = F.mse_loss(tensor, quantized_tensor)
+        
 
         # Perform the optimization step
-        loss.backward()
+        loss.backward(retain_graph=(round < 19))
         optimizer.step()
         scale.data.clamp_(min=1e-8)
     return scale.detach()
@@ -403,16 +406,13 @@ class QintTensorLayer(nn.Module):
         q_tensor = q_tensor * self.scale
         return q_tensor
 
-class QfloatTensorLayer(nn.Module):
-    def __init__(self, precision):
+class Qfloat16TensorLayer(nn.Module):
+    def __init__(self):
         super().__init__()
-        self.precision = precision
 
     def forward(self, x):
-        if self.precision == "fp32":
-            return x 
-        else: 
-            return x.half().float()
+        return x.half().float()
+    
         
         
 
@@ -460,69 +460,12 @@ def quantize_layer_recursive(
                     granularity,
                     calibration_type=calibration_type,
                     new_state_dict=new_state_dict,
-                    type=type,
                     layer_types=layer_types,
                     idx=idx,
                 )
-
-
-
-def quantize_activation_recursive(
-    model,
-    module,
-    module_name,
-    state_dict,
-    configuration,
-    granularity,
-    calibration_type="minmax",
-    activation_data=None,
-    new_state_dict=None,
-    idx=None,
-    layer_types=(nn.Conv2d, nn.BatchNorm2d, nn.Linear)
-):
-    
-    if new_state_dict is None:
-        new_state_dict = {}
-    if idx is None:
-        idx = 0
-        
-    is_leaf_module = len(list(module.children())) == 0
-    if is_leaf_module and isinstance(module, layer_types):
-        scale = calibration(activation_data[idx], precision=configuration[idx], granularity=granularity, calibration_type=calibration_type)
-
-        if granularity != "tensor":
-            raise Exception("Filter or Channel quantization not implemented for Activaiton Quantization")
-
-        if configuration[idx].startswith("fp"):
-            setattr(module, "quantfloat", nn.Sequential(module, QfloatTensorLayer(precision=configuration[idx])))
-        else: 
-            setattr(module, "quantint", nn.Sequential(module, QintTensorLayer(scale, precision=configuration[idx])))
-
-        idx += 1
-    else:
-        # Call this function recursively for each submodule
-        for name, submodule in module.named_children():
-            if name:  # avoid self-recursion on the module itself
-                full_name = f"{module_name}.{name}" if module_name else name
-                model, new_state_dict, idx = quantize_activation_recursive(
-                    model,
-                    submodule,
-                    full_name,
-                    state_dict,
-                    configuration,
-                    granularity,
-                    calibration_type=calibration_type,
-                    new_state_dict=new_state_dict,
-                    activation_data=activation_data,
-                    layer_types=layer_types,
-                    idx=idx,
-                )
-
     return model, new_state_dict, idx
 
-
     
-
 
 
 
@@ -535,7 +478,7 @@ class Quantizer:
                  activation_configuration=None,
                  layer_granularity="channel",
                  activation_granularity="tensor", 
-                 calibration_type="minmax", 
+                 calibration_type="mse", 
                  calibration_loader=None): 
         # the pytorch model to quantize
         self.model = model
@@ -550,7 +493,7 @@ class Quantizer:
         self.layer_granularity = layer_granularity 
         self.activation_granularity = activation_granularity 
         # calibration type
-        self.calibraion_type = calibration_type
+        self.calibration_type = calibration_type
         self.calibration_loader = calibration_loader
 
 
@@ -561,7 +504,7 @@ class Quantizer:
             activations = []
             for batch in self.calibration_loader:
                 collector = ActivationCollector()
-                collector.register_hooks(model, layers=(nn.ReLU, nn.ReLU6))
+                collector.register_hooks(model, layers=(nn.ReLU6, nn.ReLU, nn.BatchNorm2d))
                 model(batch)
                 activations.append(collector.activations)
         
@@ -585,8 +528,8 @@ class Quantizer:
             self.model, self.model, None, state_dict,
             self.layer_configuration,
             self.layer_granularity,
-            calibration=self.calibraion_type,
-            layer_types=(nn.Conv2d, nn.BatchNorm2d, nn.Linear) 
+            calibration_type=self.calibration_type,
+            layer_types=(nn.Conv2d, nn.Linear) 
         )
 
         for key in state_dict.keys():
@@ -597,31 +540,45 @@ class Quantizer:
         return self.model
 
     def quantize_activations(self):
-        if self.layer_configuration is None:
-            self.layer_configuration = [self.layer_precision for _ in range(1000)]
+        if self.activation_configuration == None:
+            self.activation_configuration = [self.activation_precision for _ in range(1000)]
+            
+        def replace_relu_with_sequential_identity(model, idx=None):
+            if idx == None:
+                idx = 0
+            
+            for name, module in model.named_children():
+                if isinstance(module, (nn.ReLU6, nn.ReLU, nn.BatchNorm2d)):
+                    # Replace the ReLU with Sequential containing ReLU and Identity
+                    if self.activation_configuration[0] == "fp32":
+                        setattr(model, name, nn.Sequential(module, nn.Identity()))
+                    elif self.activation_configuration[idx] == "fp16":
+                        setattr(model, name, nn.Sequential(module, Qfloat16TensorLayer()))
+                    else: 
+                        scale = calibration(self.activation_data[idx], 
+                                            precision=self.activation_configuration[idx], 
+                                            granularity=self.activation_granularity, 
+                                            calibration_type=self.calibration_type)
+                        
+                        setattr(model, name, nn.Sequential(module, QintTensorLayer(scale=scale, precision=self.activation_configuration[idx])))
+                    idx += 1
 
-        state_dict = self.model.state_dict()
-        self.model, _, _ = quantize_activation_recursive(
-            model, model, None, state_dict,
-            self.activation_configuration,
-            self.activation_granularity,
-            calibration_type=self.calibraion_type,
-            activation_data=self.activation_data,
-            layer_types=(nn.ReLU, nn.ReLU6)
-        )
+                elif len(list(module.children())) > 0:  # If module has children, recursively apply the function
+                    idx = replace_relu_with_sequential_identity(module, idx)
+                    
+            
+            return idx
+
+        replace_relu_with_sequential_identity(self.model)
         return self.model
 
 
 
 ############################################# QUANTIZATION ###############################################
 model = network.GeoLocalizationNet(args).eval()
-qmodel = network.GeoLocalizationNet(args).eval()
 model = util.resume_model(args, model)
+qmodel = network.GeoLocalizationNet(args).eval()
 qmodel = util.resume_model(args, qmodel)
-
-
-layer_configuration = ["int8" for _ in range(500)]
-activation_configuration = ["fp16" for _ in range(500)]
 
 class CalibrationDataset(Dataset):
     def __init__(self, images):
@@ -634,39 +591,39 @@ class CalibrationDataset(Dataset):
     def __getitem__(self, idx):
         return self.images[idx]
 
-
 cal_ds = CalibrationDataset(torch.randn(20, 3, 480, 640))
 cal_dl = DataLoader(cal_ds, batch_size=10)
 
 quantizer = Quantizer(qmodel,
-    layer_configuration=layer_configuration,
-    activation_configuration=activation_configuration,
+    layer_precision="int8",
+    activation_precision="fp16",
     activation_granularity="tensor",
     layer_granularity="channel",
-    calibration_type="minmax", 
+    calibration_type="mse", 
     calibration_loader=cal_dl)
 
+x = torch.randn(1, 3, 480, 640)
 
 quantizer.collect_activations()
-print(len(quantizer.activation_data))
 qmodel = quantizer.quantize_activations()
-#qmodel = quantizer.quantize_layers()
-
-sample_input = torch.randn(1, 3, 480, 640)
-
-out = qmodel(sample_input)
-print(out.shape)
+qmodel = quantizer.quantize_layers()
 
 
 
+out1 = model(x).flatten()
+out2 = qmodel(x).flatten()
 
-"""
+for i in range(len(out1)):
+    print(out1[i].item(), out2[i].item())
 
-########################################## Model Evaluation ###########################################
 
-test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
 
-recalls, retrieval_time, feature_bytes, recalls_str = test.test(
-    args, test_ds, model, args.test_method, None
-)
-"""
+
+
+
+
+
+
+
+
+
