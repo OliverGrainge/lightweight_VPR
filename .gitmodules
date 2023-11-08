@@ -1,0 +1,3 @@
+[submodule "QuantizationSim"]
+	path = QuantizationSim
+	url = https://github.com/OliverGrainge/QuantizationSim.git
