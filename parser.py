@@ -68,6 +68,9 @@ def parse_arguments():
         "--optim", type=str, default="adam", help="_", choices=["adam", "sgd"]
     )
     parser.add_argument(
+        "--average_bitwidth", type=int, default=10, help=" "
+    )
+    parser.add_argument(
         "--cache_refresh_rate",
         type=int,
         default=1000,
