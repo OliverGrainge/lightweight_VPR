@@ -4,10 +4,28 @@ import seaborn as sns
 
 data = pd.read_csv("results.csv")
 
+backbones = {"efficientnet_b0": "EfficientNet", 
+         "resnet101conv4": "ResNet101",
+         "resnet50conv4": "ResNet50",
+         "resnet18conv4": "ResNet18",
+         "mobilenetv2conv4": "MobileNetV2",
+         "squeezenet": "SqueezeNet", 
+         "vgg16":"VGG16"}
+
+aggregations = {"gem": "GeM",
+                "spoc": "SPoC",
+                "netvlad": "NetVLAD",
+                "mac": "MAC"}
+
+data = data.replace(aggregations)
+data = data.replace(backbones)
+
+print(data["backbone"].unique())
 # data = data[data['backbone'] in ['efficientnet_b0', 'resnet50_conv4']
 # data = data[data["aggregation"] == "gem"]
 
 updated_retrieval_metrics = ["st_lucia_r@1", "pitts30k_r@1", "nordland_r@1"]
+fm = ["St Lucia R@1", "Pitts30k R@1", "Nordland R@1"]
 fig, ax = plt.subplots(len(updated_retrieval_metrics), 1, figsize=(15, 20))
 
 for i, metric in enumerate(updated_retrieval_metrics):
@@ -15,12 +33,17 @@ for i, metric in enumerate(updated_retrieval_metrics):
         data=data, x="backbone", y=metric, hue="precision", ax=ax[i], palette="Set2"
     )
     ax[i].set_title(
-        f"Distribution of {metric} by Backbone and Precision", fontsize="18"
+        f"Distribution of {fm[i]} by Backbone and Precision", fontsize="18"
     )
-    ax[i].set_ylabel(f"{metric} Score", fontsize="15")
+    ax[i].set_ylabel(f"{fm[i]} Score", fontsize="15")
     ax[i].set_xlabel("Backbone", fontsize="15")
-    ax[i].legend(title="Precision", loc="upper right")
+    ax[i].set_xticklabels(ax[i].get_xticklabels(), fontsize=11)
+    if i == 1:
+        ax[i].legend(title="Precision", loc="lower right")
+    else:
+        ax[i].legend(title="Precision", loc="upper right")
 
+plt.savefig("tmp_plots/backbone_performance.png", dpi=300)
 
 # Plotting the effect of backbone on encoding latency and memory size
 fig, ax = plt.subplots(2, 1, figsize=(15, 12))
@@ -36,18 +59,21 @@ sns.boxplot(
 )
 ax[0].set_title("Feature Encoding Time by Backbone and Precision", fontsize="19")
 ax[0].set_ylabel("Encoding Time (seconds)", fontsize="16")
-ax[0].set_xlabel("Backbone")
+ax[0].set_xlabel("Backbone", fontsize="16")
+ax[0].set_xticklabels(ax[0].get_xticklabels(), fontsize=11)
 ax[0].legend(title="Precision", loc="upper right")
 # Memory Size
 sns.boxplot(
     data=data, x="backbone", y="model_size", hue="precision", ax=ax[1], palette="Set2"
 )
-ax[1].set_title("Distribution of Model Size by Backbone and Precision")
-ax[1].set_ylabel("Model Size (bytes)")
-ax[1].set_xlabel("Backbone")
+ax[1].set_title("Distribution of Model Size by Backbone and Precision", fontsize="19")
+ax[1].set_ylabel("Model Size (bytes)", fontsize="16")
+ax[1].set_xlabel("Backbone", fontsize="16")
+ax[1].set_xticklabels(ax[1].get_xticklabels(), fontsize=11)
 ax[1].legend(title="Precision", loc="upper right")
 
 plt.tight_layout()
+plt.savefig("tmp_plots/backbone_resource_dist.png", dpi=300)
 
 
 # Plotting retrieval performance for updated metrics across aggregation methods
@@ -80,8 +106,12 @@ plt.xlabel("Mean Encoding Time (seconds)")
 plt.ylabel("Model Size (bytes)")
 plt.legend(title="Backbone", loc="upper right")
 
+plt.savefig("tmp_plots/backbone_resource_dist.png", dpi=300)
+
+
+
 # Box plot of model size across aggregation methods
-plt.figure(figsize=(12, 8))
+plt.figure(figsize=(9, 5))
 sns.boxplot(
     data=data, x="aggregation", y="model_size", hue="precision", palette="muted"
 )
@@ -102,8 +132,15 @@ sns.boxplot(
 )
 plt.title("Feature Encoding Time by Aggregation and Precision", fontsize="16")
 plt.xlabel("Aggregation Method", fontsize="14")
+plt.set_xticklabels(ax[1].get_xticklabels(), fontsize=11)
 plt.ylabel("Encoding Time (ms)", fontsize="14")
 plt.legend(title="Precision", loc="upper right")
+
+plt.savefig("tmp_plots/aggregation_memory.png", dpi=600)
+
+
+
+
 
 heatmap_data = data.pivot_table(
     values="pitts30k_r@1", index="aggregation", columns="backbone", aggfunc="mean"
@@ -124,7 +161,7 @@ plt.ylabel("Aggregation Method")
 
 
 data = data[data["precision"] == "int8_comp"]
-print(data.keys())
+
 # Pivot the data to get the mean scores for each metric based on backbone and aggregation
 pitts30k_data = data.pivot_table(
     values="pitts30k_r@1", index="aggregation", columns="backbone", aggfunc="max"
@@ -169,6 +206,7 @@ ax[1].set_title("Nordland R@1 Score by Backbone and Aggregation")
 ax[2].set_title("St Lucia R@1 Score by Backbone and Aggregation")
 
 plt.tight_layout()
+plt.savefig("tmp_plots/all_recalls.png", dpi=300)
 # plt.show()
 
 
@@ -177,7 +215,7 @@ filtered_data = data[data["backbone"] == "mobilenetv2conv4"]
 gem_filtered_data = filtered_data[filtered_data["aggregation"] == "gem"]
 # print(gem_filtered_data.keys())
 # gem_filtered_data["backbone", "aggregation", "descriptor_size", "precision"]
-print(gem_filtered_data)
+
 
 # Plotting
 plt.figure(figsize=(10, 6))
@@ -193,7 +231,7 @@ plt.ylabel("Pitts30k R@1 (%)")
 plt.grid(True)
 plt.tight_layout()
 
-
+"""
 backbone = "mobilenetv2conv4"
 aggregation = "mac"
 df = pd.read_csv("results.csv")
@@ -203,6 +241,8 @@ df = df[df["backbone"] == backbone]
 df = df[df["aggregation"] == aggregation]
 
 df = df[["precision", "fc_output_dim", "pitts30k_r@1", "nordland_r@1", "st_lucia_r@1"]]
+
+
 
 fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection="3d")
@@ -224,6 +264,8 @@ ax.plot_trisurf(
 )
 
 
+
+
 ax.set_xlabel("Precision")
 ax.set_ylabel("fc_output_dim")
 ax.set_zlabel(dataset)
@@ -237,3 +279,4 @@ cbar.ax.set_ylabel("pitts30k_r@1 values")
 
 plt.title("3D Surface Plot of precision, fc_output_dim against pitts30k_r@1")
 plt.show()
+"""

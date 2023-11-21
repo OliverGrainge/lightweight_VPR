@@ -17,12 +17,13 @@ import torch.nn.functional as F
 import copy
 import time 
 import os
+import pandas as pd
 
 args = parser.parse_arguments()
 
 args.datasets_folder = "/home/oliver/Documents/github/lightweight_VPR/datasets_vg/datasets"
-args.dataset_name = "pitts30k"
-args.infer_batch_size=3
+args.dataset_name = "nordland"
+args.infer_batch_size=5
 args.backbone = "mobilenetv2conv4"
 args.aggregation = "mac"
 args.fc_output_dim = 1024
@@ -32,46 +33,107 @@ model = network.GeoLocalizationNet(args).eval().to(args.device)
 model = util.resume_model(args, model)
 model.eval().cuda()
 dummy_input = torch.randn(1, 3, 480, 640, device='cuda')
+NUM_SAMPLES = 300
+BATCH_SIZE=5
+
+average_bitwidths = [14, 13, 12, 11, 10, 9, 8]
+average_bitwidths.reverse()
+print(average_bitwidths)
+
+def convert_config(config, layer_types):
+    new_config = []
+    i = 0
+    idx = 0
+    idx = 0
+    while len(new_config) < len(layer_types):
+        if layer_types[idx].startswith('Conv2d') and layer_types[idx+1].startswith('BatchNorm2d'):
+            new_config.append(config[i])
+            new_config.append(config[i])
+            idx += 2
+            i += 1
+        elif layer_types[idx] == "Linear":
+            new_config.append(config[i])
+            idx += 1
+            i += 1
+        elif layer_types[idx].startswith('Conv2d') and layer_types[idx + 1].startswith('Conv2d'):
+            new_config.append(config[i])
+            idx += 1
+            i += 1
+    return new_config
+
+test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
+# Generate random indices
+
+# Create a subset
+test_dl = DataLoader(test_ds, BATCH_SIZE)
+
+quantizer = Quantizer(model,
+        layer_precision="int8",
+        activation_precision="fp32",
+        activation_granularity="tensor",
+        layer_granularity="channel",
+        calibration_type="minmax", 
+        cal_samples=20,
+        calibration_loader=test_dl,
+        activation_layers = (nn.Conv2d, nn.BatchNorm2d, nn.Linear), 
+        device=args.device, 
+        number_of_activations=52,
+        number_of_layers=103)
+
+quantizer.fit()
 
 
-onnx_file_path = 'model.onnx'
-
-torch.onnx.export(model, dummy_input, onnx_file_path, input_names=['input'],
-                  output_names=['output'], export_params=True)
-# Load your ONNX model
+layer_types = quantizer.all_layer_types
 
 
-onnx_model = onnx.load(onnx_file_path)
-onnx.checker.check_model(onnx_model)
-print(onnx)
-# Set up the TensorRT logger and create a builder and network
+all_recalls = []
+for bitwidth in average_bitwidths:
+    config = np.load(f"/home/oliver/Documents/github/lightweight_VPR/evoquant_data/mobilenetv2conv4_mac_1024_{str(bitwidth)}/best_configuration.npy")
+    full_layer_config = convert_config(config, layer_types)
+    int4_mask = config == "int4"
+    int8_mask = config == "int8"
+    activation_config = [str(i) for i in full_layer_config]
+    for i in range(len(activation_config)):
+        if activation_config[i] == "int4":
+            activation_config[i] == "int8"
+        if activation_config[i] == "int8":
+            activation_config[[i] == "int32"]
 
-
-TRT_LOGGER = trt.Logger()
-
-builder = trt.Builder(TRT_LOGGER)
-network = builder.create_network(flags=1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH))
-parser = trt.OnnxParser(network, TRT_LOGGER)
-
-
-with open(onnx_file_path, 'rb') as model:
-    print('Beginning ONNX file parsing')
-    parser.parse(model.read())
-print('Completed parsing of ONNX file')
-
-layer_count = 0
-for i in range(network.num_layers):
-    layer = network.get_layer(i)
-    if layer.type == trt.LayerType.CONVOLUTION:
-        layer.set_precision(trt.float16)
-        for j in range(layer.num_outputs):
-            layer.set_output_type(j, trt.float16)
-        layer_count += 1
+    quantizer = Quantizer(model,
+        layer_configuration=full_layer_config,
+        activation_configuration=list(activation_config),
+        activation_granularity="tensor",
+        layer_granularity="channel",
+        calibration_type="minmax", 
+        cal_samples=15,
+        calibration_loader=test_dl,
+        activation_layers = (nn.Conv2d, nn.BatchNorm2d, nn.Linear), 
+        device=args.device, 
+        number_of_activations=52,
+        number_of_layers=103)
     
-    print(f"Layer {i}: {layer.name}, type: {layer.type}, count_layer {layer_count}")
+    qmodel = quantizer.fit()
+    print(qmodel)
+    del quantizer
+
+    test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
+    recalls, retrieval_time, feature_bytes, recalls_str = test.test(
+    args, test_ds, qmodel, args.test_method, None
+    )
+    del qmodel
+    del test_ds
+    print(recalls_str)
+    all_recalls.append(recalls)
+    print(recalls)
+    print(type(recalls))
 
 
-print(network.num_layers)
-config = builder.create_builder_config()
-trt_model_engine = builder.build_serialized_network(network, config)
-#trt_model_context = trt_model_engine.create_execution_context()
+all_recalls = np.array(all_recalls)
+results_df = pd.DataFrame.from_dict({"recall@1":all_recalls[:, 0], 
+                                     "recall@5":all_recalls[:, 1], 
+                                     "recall@10":all_recalls[:, 2],
+                                     "average_bitwidth": average_bitwidths})
+
+
+
+results_df.to_csv("evo_quant_line_plot_nordland.csv")

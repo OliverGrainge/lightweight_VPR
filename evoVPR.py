@@ -49,6 +49,7 @@ test_dl = DataLoader(test_ds, BATCH_SIZE)
 for batch in test_dl:
     break
 
+test_ds = datasets_ws.BaseDataset(args, args.datasets_folder, args.dataset_name, "test")
 quantizer = Quantizer(model,
         layer_precision="int8",
         activation_precision="fp32",
@@ -223,6 +224,7 @@ def selection(population: list) -> list:
             number_of_layers=103)
         qmodel = quantizer.quantize_layers()
         qmodel = qmodel.eval()
+
         with torch.no_grad():
             qdesc = qmodel(batch[0].to(args.device)).detach().cpu()
             #qdesc = torch.stack([qmodel(batch[0].to(args.device)).detach().cpu() for batch in test_dl])
