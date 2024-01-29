@@ -359,7 +359,7 @@ class mixedPrecision(nn.Module):
         return output
 
 
-"""
+
 def quantize_model(model, precision="fp16", calibration_dataset=None, args=None):
     if precision == "fp32":
         return model
@@ -487,4 +487,3 @@ def benchmark_latency(
     average_latency = np.mean(latencies)
     std_latency = np.std(latencies)
     return average_latency, std_latency
-"""
