@@ -186,6 +186,7 @@ logging.info(f"Model size is {model_size} bytes")
 
 
 ######################################### TEST on TEST SET #################################
+args.efficient_ram_testing = True
 recalls, retrieval_time, feature_bytes, recalls_str = test.test(
     args, test_ds, model, args.test_method, pca
 )
