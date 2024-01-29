@@ -187,7 +187,7 @@ logging.info(f"Model size is {model_size} bytes")
 
 ######################################### TEST on TEST SET #################################
 args.efficient_ram_testing = True
-recalls, retrieval_time, feature_bytes, recalls_str = test.test(
+recalls, feature_bytes, recalls_str = test.test(
     args, test_ds, model, args.test_method, pca
 )
 result_data[args.dataset_name + "_r@1"] = recalls[0]
@@ -195,7 +195,6 @@ result_data["descriptor_size"] = feature_bytes
 result_data[args.dataset_name + "_r@5"] = recalls[1]
 result_data[args.dataset_name + "_r@10"] = recalls[2]
 result_data[args.dataset_name + "_r@20"] = recalls[3]
-result_data["mean_retrieval_time"] = retrieval_time
 logging.info(f"Recalls on {test_ds}: {recalls_str}")
 
 
@@ -209,7 +208,6 @@ lat_mean, lat_var = benchmark_latency(
 )
 result_data["mean_encoding_time"] = lat_mean
 result_data["std_encoding_time"] = lat_var
-result_data["retrieval_time"] = retrieval_time
 print("==================================================================")
 print(result_data)
 logging.info(f"Mean Inference Latency: {lat_mean}, STD Inference Latency: {lat_var}")

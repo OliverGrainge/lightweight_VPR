@@ -165,7 +165,7 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
     recalls_str = ", ".join(
         [f"R@{val}: {rec:.1f}" for val, rec in zip(args.recall_values, recalls)]
     )
-    return recalls, recalls_str
+    return recalls, feature_bytes, recalls_str
 
 
 #recalls, np.mean(retrieval_times), feature_bytes, recalls_str
