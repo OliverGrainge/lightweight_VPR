@@ -71,6 +71,14 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
                     indices.numpy() - eval_ds.database_num, :
                 ] = features.cpu().numpy()
 
+            feature_bytes = queries_features[0].nbytes
+            print("====================================================================================================================================")
+            print("====================================================================================================================================")
+            print("====================================================================================================================================")
+            print(queries_features.shape[0])
+            print("====================================================================================================================================")
+            print("====================================================================================================================================")
+
         queries_features = torch.tensor(queries_features).type(torch.float32).cuda()
         logging.debug("Extracting database features for evaluation/testing")
         # For database use "hard_resiWARNING: [Torch-TensorRT] - CUDA lazy loading is not enabled. Enabling it can significantly reduce device memory usage and speed up TensorRT initialization. See "Lazy Loading" section of CUDA documentation https://docs.nvidia.com/cuda/cuda-c-programming-guide/index.html#lazy-loading
@@ -158,6 +166,10 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
         [f"R@{val}: {rec:.1f}" for val, rec in zip(args.recall_values, recalls)]
     )
     return recalls, recalls_str
+
+
+recalls, np.mean(retrieval_times), feature_bytes, recalls_str
+
 
 
 def test(args, eval_ds, model, test_method="hard_resize", pca=None):
