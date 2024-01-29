@@ -168,7 +168,7 @@ def test_efficient_ram_usage(args, eval_ds, model, test_method="hard_resize"):
     return recalls, recalls_str
 
 
-recalls, np.mean(retrieval_times), feature_bytes, recalls_str
+#recalls, np.mean(retrieval_times), feature_bytes, recalls_str
 
 
 
