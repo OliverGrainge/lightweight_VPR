@@ -97,7 +97,7 @@ def parse_arguments():
     parser.add_argument(
         "--mining",
         type=str,
-        default="partial",
+        default="random",
         choices=["partial", "full", "random", "msls_weighted"],
     )
     parser.add_argument(

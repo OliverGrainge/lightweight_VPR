@@ -132,7 +132,6 @@ sns.boxplot(
 )
 plt.title("Feature Encoding Time by Aggregation and Precision", fontsize="16")
 plt.xlabel("Aggregation Method", fontsize="14")
-plt.set_xticklabels(ax[1].get_xticklabels(), fontsize=11)
 plt.ylabel("Encoding Time (ms)", fontsize="14")
 plt.legend(title="Precision", loc="upper right")
 

@@ -5,7 +5,7 @@ import re
 import shutil
 from collections import OrderedDict
 from os.path import join
-
+import torchscan
 import numpy as np
 import torch
 import torch.nn as nn
