@@ -16,6 +16,7 @@ from sklearn.decomposition import PCA
 from torch.cuda.amp import autocast
 from torchvision import models
 from tqdm import tqdm
+import torch_tensorrt
 
 import datasets_ws
 
